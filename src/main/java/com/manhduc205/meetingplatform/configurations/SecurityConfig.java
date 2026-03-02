@@ -1,4 +1,4 @@
-package com.manhduc205.meetingplatform.configuations;
+package com.manhduc205.meetingplatform.configurations;
 
 import com.manhduc205.meetingplatform.security.KeycloakJwtConverter;
 import jakarta.servlet.http.HttpServletResponse;
@@ -46,6 +46,7 @@ public class SecurityConfig {
                                 "/api/public/**"
                         ).permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("api/meetings/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

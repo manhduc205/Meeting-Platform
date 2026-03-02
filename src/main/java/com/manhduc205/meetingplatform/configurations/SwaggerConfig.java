@@ -1,4 +1,4 @@
-package com.manhduc205.meetingplatform.configuations;
+package com.manhduc205.meetingplatform.configurations;
 
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;

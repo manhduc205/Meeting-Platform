@@ -19,10 +19,21 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
-
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: "" # Điền pass vào đây nếu máy bạn có cài, không thì để trống
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8080/realms/meeting-realm
           jwk-set-uri: http://localhost:8080/realms/meeting-realm/protocol/openid-connect/certs
+app:
+  websocket:
+    endpoint: "/ws/meeting"
+    allowed-origins: ${WS_ALLOWED_ORIGINS:http://localhost:4200}
+    broker-topic-prefix: "/topic"
+    broker-queue-prefix: "/queue"
+    app-destination-prefix: "/app"
