@@ -37,3 +37,8 @@ app:
     broker-topic-prefix: "/topic"
     broker-queue-prefix: "/queue"
     app-destination-prefix: "/app"
+
+  livekit:
+    host: ${LIVEKIT_URL:ws://localhost:7880} # Port mặc định của LiveKit chạy Docker
+    api-key: ${LIVEKIT_API_KEY:devkey}
+    api-secret: ${LIVEKIT_API_SECRET:secret}
