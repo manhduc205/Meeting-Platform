@@ -38,3 +38,31 @@ services:
       - "8080:8080"
     depends_on:
       - postgres
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: meeting-livekit
+    restart: always
+    ports:
+      - "7880:7880" # API & WebSocket
+      - "7881:7881" # WebRTC over TCP (Dự phòng khi UDP bị chặn)
+      - "50000-60000:50000-60000/udp" # Dải port vàng cho Video/Audio
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml
+    command: --config /etc/livekit.yaml
+    networks:
+      - meeting-network
+
+  coturn:
+    image: coturn/coturn:latest
+    container_name: meeting-coturn
+    restart: always
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "49152-49160:49152-49160/udp"
+    command:
+      - -n --min-port=49152 --max-port=49160
+      - --realm=meeting.manhduc --user=ducit:ducpass123
+networks:
+  meeting-network:
+    external: true

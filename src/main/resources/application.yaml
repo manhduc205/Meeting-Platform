@@ -39,6 +39,6 @@ app:
     app-destination-prefix: "/app"
 
   livekit:
-    host: ${LIVEKIT_URL:ws://localhost:7880} # Port mặc định của LiveKit chạy Docker
-    api-key: ${LIVEKIT_API_KEY:devkey}
-    api-secret: ${LIVEKIT_API_SECRET:secret}
+    host: ws://localhost:7880 # Thay localhost bằng IP Server nếu chạy thực tế
+    api-key: livekit_api_key_2026
+    api-secret: livekit_api_secret_2026_super_secure

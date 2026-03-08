@@ -44,7 +44,7 @@ public class MeetingPresenceServiceImpl implements MeetingPresenceService {
     }
     @Override
     public void markUserAsReconnecting(String meetingCode, String userId){
-        String pendingKey = PENDING_KEY_PREFIX + meetingCode;
+        String pendingKey = PENDING_KEY_PREFIX + meetingCode + ":" + userId;
         // Xóa khỏi danh sách active ngay để không tính vào ngưỡng Hybrid
         this.removeOnlineUser(meetingCode, userId);
         redisTemplate.opsForValue().set(pendingKey, "WAITING_FOR_RECONNECT", 60, java.util.concurrent.TimeUnit.SECONDS);
