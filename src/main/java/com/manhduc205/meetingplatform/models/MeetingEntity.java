@@ -22,6 +22,9 @@ public class MeetingEntity {
     @Column(name = "meeting_code", unique = true, nullable = false)
     private String meetingCode;
 
+    @Column(name = "meeting_password")
+    private String meetingPassword;
+
     @Column(name = "host_id", nullable = false)
     private String hostId;
 

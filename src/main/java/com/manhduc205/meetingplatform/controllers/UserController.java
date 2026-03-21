@@ -18,7 +18,10 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
-
+    @GetMapping("/sync")
+    public ResponseEntity<String> syncUser() {
+        return ResponseEntity.ok("User synchronized successfully");
+    }
     @GetMapping("/me")
     public ResponseEntity<UserProfileResponse> getMyProfile(@AuthenticationPrincipal Jwt jwt) {
         String keycloakId = jwt.getSubject();

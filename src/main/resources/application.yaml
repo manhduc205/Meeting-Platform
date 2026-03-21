@@ -42,3 +42,9 @@ app:
     host: ws://localhost:7880 # Thay localhost bằng IP Server nếu chạy thực tế
     api-key: livekit_api_key_2026
     api-secret: livekit_api_secret_2026_super_secure
+
+  webrtc:
+    stun-url: stun:stun.l.google.com:19302
+    turn-url: turn:your-turn-server.com:3478
+    turn-username: ducit
+    turn-password: ducpass123

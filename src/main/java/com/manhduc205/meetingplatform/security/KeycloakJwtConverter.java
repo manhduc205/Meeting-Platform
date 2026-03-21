@@ -12,9 +12,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
@@ -32,11 +32,20 @@ public class KeycloakJwtConverter implements Converter<Jwt, AbstractAuthenticati
     }
 
     private Collection<GrantedAuthority> extractRealmRoles(Jwt jwt) {
-        return Optional.ofNullable((Map<String, Object>) jwt.getClaimAsMap("realm_access"))
-                .map(realmAccess -> (Collection<String>) realmAccess.get("roles"))
-                .orElse(Collections.emptyList())
-                .stream()
-                .map(roleName -> new SimpleGrantedAuthority("ROLE_" + roleName.toUpperCase()))
-                .collect(Collectors.toSet());
+        Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+        if (realmAccess == null) {
+            return Collections.emptyList();
+        }
+
+        Collection<String> roles = (Collection<String>) realmAccess.get("roles");
+        if (roles == null || roles.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Set<GrantedAuthority> authorities = new HashSet<>();
+        for (String roleName : roles) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_" + roleName.toUpperCase()));
+        }
+        return authorities;
     }
 }

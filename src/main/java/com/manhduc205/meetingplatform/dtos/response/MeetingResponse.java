@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 public class MeetingResponse {
     private String id;
     private String meetingCode;
+    private String meetingPassword;
     private String title;
     private String description;
     private String hostId;

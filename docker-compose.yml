@@ -19,6 +19,8 @@ services:
       POSTGRES_PASSWORD: 123456
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   keycloak:
     image: quay.io/keycloak/keycloak:23.0
@@ -43,12 +45,16 @@ services:
     container_name: meeting-livekit
     restart: always
     ports:
-      - "7880:7880" # API & WebSocket
-      - "7881:7881" # WebRTC over TCP (Dự phòng khi UDP bị chặn)
-      - "50000-60000:50000-60000/udp" # Dải port vàng cho Video/Audio
-    volumes:
-      - ./livekit.yaml:/etc/livekit.yaml
-    command: --config /etc/livekit.yaml
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50010:50000-50010/udp"
+    # Dùng lệnh này để cấu hình trực tiếp, không cần file bên ngoài
+    command:
+      - --dev
+      - --node-ip
+      - 0.0.0.0
+      - --keys
+      - "livekit_api_key_2026: livekit_api_secret_2026_super_secure"
     networks:
       - meeting-network
 
@@ -65,4 +71,9 @@ services:
       - --realm=meeting.manhduc --user=ducit:ducpass123
 networks:
   meeting-network:
-    external: true
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local
+  postgres_data:

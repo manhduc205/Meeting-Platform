@@ -8,5 +8,6 @@ public class MeetingCreateRequest {
     private String title;
     private String description;
     private LocalDateTime startTime;
+    private String meetingPassword;
     private Boolean isWaitingRoomEnabled;
 }

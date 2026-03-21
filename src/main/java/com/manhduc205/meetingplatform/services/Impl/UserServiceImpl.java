@@ -1,4 +1,4 @@
-package com.manhduc205.meetingplatform.services.impl;
+package com.manhduc205.meetingplatform.services.Impl;
 
 import com.manhduc205.meetingplatform.dtos.request.UserUpdateRequest;
 import com.manhduc205.meetingplatform.dtos.response.UserProfileResponse;

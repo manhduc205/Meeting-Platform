@@ -1,6 +1,6 @@
 package com.manhduc205.meetingplatform.configurations;
 
-import com.manhduc205.meetingplatform.security.JwtService;
+import com.manhduc205.meetingplatform.services.JwtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;

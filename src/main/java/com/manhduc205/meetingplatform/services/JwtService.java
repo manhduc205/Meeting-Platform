@@ -1,4 +1,4 @@
-package com.manhduc205.meetingplatform.security;
+package com.manhduc205.meetingplatform.services;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

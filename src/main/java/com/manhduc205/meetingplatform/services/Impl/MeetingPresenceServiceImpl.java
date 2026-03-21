@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -19,36 +20,43 @@ import java.util.*;
 public class MeetingPresenceServiceImpl implements MeetingPresenceService {
     private final RedisTemplate<String, Object> redisTemplate;
 
-    // Prefix để dễ quản lý key trong Redis (VD: room:abc-def-ghi:users)
+    // room:abc-def-ghi:users
+    // ZSet sử dụng timestamp làm score để maintain insertion order
     private static final String ROOM_KEY_PREFIX = "room:";
     private static final String ROOM_KEY_SUFFIX = ":users";
     private static final String PENDING_KEY_PREFIX = "pending:room:";
+
+    private static final long ROOM_KEY_TTL_HOURS = 12;
+
     @Override
     public void addOnlineUser(String meetingCode, String userId) {
         String key = ROOM_KEY_PREFIX + meetingCode + ROOM_KEY_SUFFIX;
-        redisTemplate.opsForSet().add(key, userId);
-    }
+        // Dùng ZSet với score = current timestamp (ms)
+        double score = System.currentTimeMillis();
+        redisTemplate.opsForZSet().add(key, userId, score);
 
+        redisTemplate.expire(key, ROOM_KEY_TTL_HOURS, TimeUnit.HOURS);
+    }
     @Override
     public void removeOnlineUser(String meetingCode, String userId) {
         String key = ROOM_KEY_PREFIX + meetingCode + ROOM_KEY_SUFFIX;
-        redisTemplate.opsForSet().remove(key, userId);
+        redisTemplate.opsForZSet().remove(key, userId);
+        log.debug("✅ Removed online user [{}] from room [{}]", userId, meetingCode);
     }
 
     @Override
     public Set<Object> getOnlineUsers(String meetingCode) {
         String key = ROOM_KEY_PREFIX + meetingCode + ROOM_KEY_SUFFIX;
-        Set<Object> members = redisTemplate.opsForSet().members(key);
+        // Lấy tất cả members từ ZSet, sorted by score (timestamp) ascending (oldest first)
+        Set<Object> members = redisTemplate.opsForZSet().range(key, 0, -1);
         return Optional.ofNullable(members).orElse(Collections.emptySet());
 
     }
     @Override
     public void markUserAsReconnecting(String meetingCode, String userId){
         String pendingKey = PENDING_KEY_PREFIX + meetingCode + ":" + userId;
-        // Xóa khỏi danh sách active ngay để không tính vào ngưỡng Hybrid
         this.removeOnlineUser(meetingCode, userId);
-        redisTemplate.opsForValue().set(pendingKey, "WAITING_FOR_RECONNECT", 60, java.util.concurrent.TimeUnit.SECONDS);
-        log.info("User [{}] được ân hạn 60s để kết nối lại phòng [{}].", userId, meetingCode);
+        redisTemplate.opsForValue().set(pendingKey, "WAITING_FOR_RECONNECT", 60, TimeUnit.SECONDS);
     }
     @Override
     public List<SignalingMessage> handlePresenceUpdate(SignalingMessage message) {
@@ -57,20 +65,17 @@ public class MeetingPresenceServiceImpl implements MeetingPresenceService {
         PresenceType pType = PresenceType.valueOf(message.getType());
 
         List<SignalingMessage> responses = new ArrayList<>();
-        // Luôn trả về tin nhắn gốc để thông báo trạng thái User hiện tại
         responses.add(message);
 
         if (PresenceType.JOIN.equals(pType)) {
             String pendingKey = PENDING_KEY_PREFIX + mCode + ":" + uId;
 
-            // check xem user có đang reconnecting hay không (tức là có key Pending tồn tại
             Boolean isReconnecting = redisTemplate.hasKey(pendingKey);
 
-            if (Boolean.TRUE.equals(isReconnecting)) {
-                // Xóa key Pending
+            if (isReconnecting) {
                 redisTemplate.delete(pendingKey);
                 message.setType("RECONNECTED");
-                log.info("User [{}] đã RECONNECT thành công vào phòng [{}].", uId, mCode);
+                log.info(" User [{}] đã RECONNECT thành công vào phòng [{}].", uId, mCode);
             }
             this.addOnlineUser(mCode, uId);
             // Sau khi thêm user vào online, gửi thêm 1 tin nhắn chứa danh sách user hiện tại để đồng bộ cho client mới vào
@@ -82,7 +87,6 @@ public class MeetingPresenceServiceImpl implements MeetingPresenceService {
                     .payload(currentUsers)
                     .build();
             responses.add(syncMsg);
-            // Kiểm tra ngưỡng để tự động tạo lệnh chuyển đổi SFU
             if (this.shouldSwitchToSfu(mCode)) {
                 responses.add(SignalingMessage.builder()
                         .category(MessageCategory.SIGNALING)
@@ -100,12 +104,12 @@ public class MeetingPresenceServiceImpl implements MeetingPresenceService {
     @Override
     public boolean shouldSwitchToSfu(String meetingCode) {
         String key = ROOM_KEY_PREFIX + meetingCode + ROOM_KEY_SUFFIX;
-        Long onlineCount = redisTemplate.opsForSet().size(key);
+        Long onlineCount = redisTemplate.opsForZSet().size(key);
 
         // Nếu số người >= 3 thì chuyển sang chế độ SFU
         boolean isSfu = onlineCount != null && onlineCount >= 3;
         if (isSfu) {
-            log.warn("Phòng [{}] đạt ngưỡng SFU ({} người). Kích hoạt lệnh chuyển đổi!", meetingCode, onlineCount);
+            log.warn("⚠️ Phòng [{}] đạt ngưỡng SFU ({} người). Kích hoạt lệnh chuyển đổi!", meetingCode, onlineCount);
         }
         return isSfu;
     }
