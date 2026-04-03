@@ -1,0 +1,34 @@
+package com.manhduc205.meetingplatform.controllers;
+
+import com.manhduc205.meetingplatform.dtos.response.RaisedHandResponse;
+import com.manhduc205.meetingplatform.services.MeetingParticipantService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/v1/meetings/{meetingCode}/actions")
+public class MeetingActionController {
+
+    private final MeetingParticipantService participantService;
+
+    // Giơ / Hạ tay (Kích hoạt Delta Broadcast)
+    @PostMapping("/raise-hand")
+    public ResponseEntity<Void> toggleRaiseHand(
+            @PathVariable String meetingCode,
+            @RequestParam boolean isRaising,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        participantService.toggleRaiseHand(meetingCode, jwt.getSubject(), isRaising);
+        return ResponseEntity.ok().build();
+    }
+
+    // Đồng bộ ban đầu khi mới vào phòng
+    @GetMapping("/raised-hands")
+    public ResponseEntity<RaisedHandResponse> getInitialRaisedHands(@PathVariable String meetingCode) {
+        return ResponseEntity.ok(participantService.getRaisedHands(meetingCode));
+    }
+}

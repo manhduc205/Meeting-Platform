@@ -107,7 +107,7 @@ public class MeetingPresenceServiceImpl implements MeetingPresenceService {
         Long onlineCount = redisTemplate.opsForZSet().size(key);
 
         // Nếu số người >= 3 thì chuyển sang chế độ SFU
-        boolean isSfu = onlineCount != null && onlineCount >= 3;
+        boolean isSfu = onlineCount != null && onlineCount >= 0;
         if (isSfu) {
             log.warn("⚠️ Phòng [{}] đạt ngưỡng SFU ({} người). Kích hoạt lệnh chuyển đổi!", meetingCode, onlineCount);
         }

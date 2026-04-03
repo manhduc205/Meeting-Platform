@@ -40,6 +40,14 @@ public class MeetingEntity {
     @Column(name = "end_time")
     private LocalDateTime endTime;
 
+    @Column(name = "is_locked")
+    @Builder.Default
+    private Boolean isLocked = false;
+
+    @Column(name = "is_screen_share_disabled")
+    @Builder.Default
+    private Boolean isScreenShareDisabled = false;
+
     @Column(length = 20)
     @Builder.Default
     private String status = MeetingStatus.SCHEDULED.name();

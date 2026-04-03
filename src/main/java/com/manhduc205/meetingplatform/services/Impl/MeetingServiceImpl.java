@@ -5,7 +5,9 @@ import com.manhduc205.meetingplatform.dtos.request.MeetingCreateRequest;
 import com.manhduc205.meetingplatform.dtos.response.MeetingResponse;
 import com.manhduc205.meetingplatform.enums.MeetingStatus;
 import com.manhduc205.meetingplatform.models.MeetingEntity;
+import com.manhduc205.meetingplatform.models.UserEntity;
 import com.manhduc205.meetingplatform.repositories.MeetingRepository;
+import com.manhduc205.meetingplatform.repositories.UserRepository;
 import com.manhduc205.meetingplatform.services.MeetingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,48 +22,48 @@ import java.security.SecureRandom;
 public class MeetingServiceImpl implements MeetingService {
 
     private final MeetingRepository meetingRepository;
+    private final  UserRepository userRepository;
     private final MeetingMapper meetingMapper;
-    private static final String CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
-    private final SecureRandom random = new SecureRandom();
 
     @Override
     @Transactional
-    public MeetingResponse createMeeting(MeetingCreateRequest request, String hostId) {
-        log.info("ServiceImpl: Đang tạo cuộc họp cho host: {}", hostId);
+    public MeetingResponse createMeeting(MeetingCreateRequest request, String keycloakId) {
+        log.info("ServiceImpl: Tạo cuộc họp định dạng số cho Host: {}", keycloakId);
 
         String meetingCode;
         do {
-            meetingCode = generateRandomCode();
+            meetingCode = generateNumericCode(10);
         } while (meetingRepository.existsByMeetingCode(meetingCode));
 
+        MeetingEntity entity = meetingMapper.toEntity(request);
+        UserEntity host = userRepository.findByKeycloakId(keycloakId)
+                .orElseThrow(() -> new IllegalArgumentException("User chưa đồng bộ về DB!"));
 
-        MeetingEntity entity = MeetingEntity.builder()
-                .title(request.getTitle())
-                .description(request.getDescription())
-                .startTime(request.getStartTime())
-                .hostId(hostId)
-                .meetingCode(meetingCode)
-                .meetingPassword(request.getMeetingPassword())
-                .isWaitingRoomEnabled(request.getIsWaitingRoomEnabled() != null ? request.getIsWaitingRoomEnabled() : true)
-                .status(MeetingStatus.SCHEDULED.name())
-                .build();
+        String userId = host.getId().toString();
+        entity.setMeetingCode(meetingCode);
+        entity.setHostId(userId);
+        entity.setStatus(MeetingStatus.SCHEDULED.name());
+
+        if (request.getIsWaitingRoomEnabled() == null) {
+            entity.setIsWaitingRoomEnabled(true);
+        }
 
         MeetingEntity saved = meetingRepository.save(entity);
+
         return meetingMapper.ToMeetingResponse(saved);
     }
-    private String generateRandomCode() {
+    private String generateNumericCode(int length) {
+        java.security.SecureRandom random = new java.security.SecureRandom();
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 3; i++) {
-            if (i > 0) {
-                sb.append("-");
-            }
-            for (int j = 0; j < 3; j++) {
-                sb.append(CHARS.charAt(random.nextInt(CHARS.length())));
+        for (int i = 0; i < length; i++) {
+            if (i == 0) {
+                sb.append(random.nextInt(9) + 1);
+            } else {
+                sb.append(random.nextInt(10));
             }
         }
         return sb.toString();
     }
-
     @Override
     public MeetingResponse endMeeting(String meetingCode, String hostId) {
         log.info("ServiceImpl: Kết thúc cuộc họp với ID: {} bởi host: {}", meetingCode, hostId);
@@ -69,7 +71,6 @@ public class MeetingServiceImpl implements MeetingService {
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cuộc họp với mã: " + meetingCode));
 
         if (!meeting.getHostId().equals(hostId)) {
-            log.warn("Cảnh báo bảo mật: User [{}] cố gắng kết thúc phòng [{}] trái phép!", hostId, meetingCode);
             throw new SecurityException("Bạn không có quyền! Chỉ chủ phòng mới được kết thúc cuộc họp.");
         }
         if(meeting.getStatus().equals(MeetingStatus.ENDED.name())){
