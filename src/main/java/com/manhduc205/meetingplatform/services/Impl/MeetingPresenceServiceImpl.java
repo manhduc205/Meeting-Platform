@@ -87,31 +87,31 @@ public class MeetingPresenceServiceImpl implements MeetingPresenceService {
                     .payload(currentUsers)
                     .build();
             responses.add(syncMsg);
-            if (this.shouldSwitchToSfu(mCode)) {
-                responses.add(SignalingMessage.builder()
-                        .category(MessageCategory.SIGNALING)
-                        .type(SignalingType.SWITCH_TO_SFU.name())
-                        .meetingCode(mCode)
-                        .timestamp(LocalDateTime.now())
-                        .build());
-            }
+//            if (this.shouldSwitchToSfu(mCode)) {
+//                responses.add(SignalingMessage.builder()
+//                        .category(MessageCategory.SIGNALING)
+//                        .type(SignalingType.SWITCH_TO_SFU.name())
+//                        .meetingCode(mCode)
+//                        .timestamp(LocalDateTime.now())
+//                        .build());
+//            }
         } else if (PresenceType.LEAVE.equals(pType)) {
             this.removeOnlineUser(mCode, uId);
         }
 
         return responses;
     }
-    @Override
-    public boolean shouldSwitchToSfu(String meetingCode) {
-        String key = ROOM_KEY_PREFIX + meetingCode + ROOM_KEY_SUFFIX;
-        Long onlineCount = redisTemplate.opsForZSet().size(key);
-
-        // Nếu số người >= 3 thì chuyển sang chế độ SFU
-        boolean isSfu = onlineCount != null && onlineCount >= 0;
-        if (isSfu) {
-            log.warn("⚠️ Phòng [{}] đạt ngưỡng SFU ({} người). Kích hoạt lệnh chuyển đổi!", meetingCode, onlineCount);
-        }
-        return isSfu;
-    }
+//    @Override
+//    public boolean shouldSwitchToSfu(String meetingCode) {
+//        String key = ROOM_KEY_PREFIX + meetingCode + ROOM_KEY_SUFFIX;
+//        Long onlineCount = redisTemplate.opsForZSet().size(key);
+//
+//        // Nếu số người >= 3 thì chuyển sang chế độ SFU
+//        boolean isSfu = onlineCount != null && onlineCount >= 0;
+//        if (isSfu) {
+//            log.warn("Phòng [{}] đạt ngưỡng SFU ({} người). Kích hoạt lệnh chuyển đổi!", meetingCode, onlineCount);
+//        }
+//        return isSfu;
+//    }
 
 }

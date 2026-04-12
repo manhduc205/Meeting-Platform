@@ -20,11 +20,8 @@ public class MediaController {
 
     @GetMapping("/join/{meetingCode}")
     public ResponseEntity<MediaJoinResponse> requestJoinMedia(
-            @PathVariable String meetingCode,
-            @AuthenticationPrincipal Jwt jwt) {
-        String userId = jwt.getSubject();
-
-        MediaJoinResponse response = mediaService.prepareMediaConnection(meetingCode, userId);
+            @PathVariable String meetingCode) {
+        MediaJoinResponse response = mediaService.prepareMediaConnection(meetingCode);
 
         return ResponseEntity.ok(response);
     }

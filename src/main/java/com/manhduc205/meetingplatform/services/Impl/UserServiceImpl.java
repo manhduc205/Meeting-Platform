@@ -6,6 +6,7 @@ import com.manhduc205.meetingplatform.exceptions.DataNotFoundException;
 import com.manhduc205.meetingplatform.models.UserEntity;
 import com.manhduc205.meetingplatform.repositories.UserRepository;
 import com.manhduc205.meetingplatform.services.UserService;
+import com.manhduc205.meetingplatform.utils.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -47,23 +48,23 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional(readOnly = true)
-    public UserProfileResponse getCurrentUserProfile(String keycloakId) {
-
-        return userRepository.findByKeycloakId(keycloakId)
+    public UserProfileResponse getCurrentUserProfile() {
+        String internalUserId = UserContext.getUserId();
+        return userRepository.findById(internalUserId)
                 .map(this::mapToProfileResponse)
                 .orElseThrow(() -> {
-                    log.error("ServiceImpl Lỗi: Không tìm thấy User với Keycloak ID: {}", keycloakId);
+                    log.error("ServiceImpl Lỗi: Không tìm thấy User với ID: {}", internalUserId);
                     return new DataNotFoundException("Người dùng không tồn tại trong hệ thống Database!");
                 });
     }
 
     @Override
     @Transactional
-    public UserProfileResponse updateProfile(String keycloakId, UserUpdateRequest request) {
-
-        UserEntity user = userRepository.findByKeycloakId(keycloakId)
+    public UserProfileResponse updateProfile( UserUpdateRequest request) {
+        String internalUserId = UserContext.getUserId();
+        UserEntity user = userRepository.findById(internalUserId)
                 .orElseThrow(() -> {
-                    log.error("ServiceImpl Lỗi: Cập nhật thất bại. Không tìm thấy Keycloak ID: {}", keycloakId);
+                    log.error("ServiceImpl Lỗi: Cập nhật thất bại. Không tìm thấy User ID: {}", internalUserId);
                     return new DataNotFoundException("Người dùng không tồn tại trong hệ thống Database!");
                 });
 

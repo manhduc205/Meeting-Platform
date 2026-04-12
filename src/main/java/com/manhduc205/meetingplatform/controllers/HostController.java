@@ -23,10 +23,9 @@ public class HostController {
     public ResponseEntity<Void> updateSettings(
             @PathVariable String meetingCode,
             @RequestParam String type,
-            @RequestParam boolean enabled,
-            @AuthenticationPrincipal Jwt jwt) {
+            @RequestParam boolean enabled) {
 
-        hostService.updateSecuritySetting(meetingCode, jwt.getSubject(), type, enabled);
+        hostService.updateSecuritySetting(meetingCode, type, enabled);
         return ResponseEntity.ok().build();
     }
 
@@ -34,14 +33,13 @@ public class HostController {
     public ResponseEntity<Void> executeCommand(
             @PathVariable String meetingCode,
             @RequestParam String command,
-            @RequestParam(required = false) String targetId,
-            @AuthenticationPrincipal Jwt jwt) {
+            @RequestParam(required = false) String targetId) {
 
         // Phân luồng lệnh gọi thẳng vào Service
         if ("MUTE_ALL".equals(command)) {
-            hostService.muteAll(meetingCode, jwt.getSubject());
+            hostService.muteAll(meetingCode);
         } else if ("KICK_PARTICIPANT".equals(command)) {
-            hostService.kickUser(meetingCode, jwt.getSubject(), targetId);
+            hostService.kickUser(meetingCode, targetId);
         } else {
             throw new IllegalArgumentException("Lệnh không được hỗ trợ: " + command);
         }

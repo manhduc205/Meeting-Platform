@@ -12,6 +12,8 @@ import com.manhduc205.meetingplatform.repositories.MeetingRepository;
 import com.manhduc205.meetingplatform.repositories.UserRepository;
 import com.manhduc205.meetingplatform.services.MeetingParticipantService;
 import com.manhduc205.meetingplatform.services.MeetingPresenceService;
+import com.manhduc205.meetingplatform.services.UserIdCacheService;
+import com.manhduc205.meetingplatform.utils.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -32,6 +34,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
     private final UserRepository userRepository;
     private final ParticipantMapper participantMapper;
     private final MeetingPresenceService presenceService;
+    private final UserIdCacheService userIdCacheService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final SimpMessagingTemplate messagingTemplate;
 
@@ -98,24 +101,90 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
                 .displayText(displayText)
                 .build();
     }
+    @Override
+    @Transactional(readOnly = true)
+    public List<ParticipantDto> getAllParticipants(String meetingCode) {
+        log.info("Lấy FULL danh sách cho Sidebar phòng: {}", meetingCode);
 
+        // 1. Tìm Meeting để xác định ai là Host
+        MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cuộc họp"));
+        String hostId = meeting.getHostId();
+
+        // 2. Lấy TOÀN BỘ User ID từ Redis (Truyền 0 đến -1 thay vì limit)
+        String activeKey = ACTIVE_PARTICIPANTS_PREFIX + meetingCode;
+        Set<Object> activeUserIds = redisTemplate.opsForZSet().range(activeKey, 0, -1);
+
+        if (activeUserIds == null || activeUserIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 3. Lấy thêm danh sách đang giơ tay từ Redis để mapping trạng thái
+        String raisedHandKey = RAISED_HANDS_PREFIX + meetingCode;
+        Set<Object> raisedHands = redisTemplate.opsForZSet().range(raisedHandKey, 0, -1);
+        Set<String> raisedHandIds = (raisedHands != null)
+                ? raisedHands.stream().map(Object::toString).collect(Collectors.toSet())
+                : Collections.emptySet();
+
+        // 4. Query Batch Database
+        List<String> userIdList = activeUserIds.stream().map(Object::toString).toList();
+        List<UserEntity> users = userRepository.findAllById(userIdList);
+
+        // 🔥 TỐI ƯU CẤU TRÚC DỮ LIỆU: HashMap Capacity (Chia 0.75 chống Rehash)
+        int mapCapacity = (int) (users.size() / 0.75f) + 1;
+        Map<String, UserEntity> userMapById = new HashMap<>(mapCapacity);
+        for (UserEntity user : users) {
+            userMapById.put(user.getId(), user);
+        }
+
+        // 5. Mapping DTO và đính kèm trạng thái
+        List<ParticipantDto> participants = new ArrayList<>(userIdList.size());
+        for (String userId : userIdList) {
+            UserEntity user = userMapById.get(userId);
+            if (user != null) {
+                ParticipantDto dto = participantMapper.toParticipantDto(user);
+
+                // Logic phân loại trạng thái cực kỳ quan trọng cho UI
+                if (hostId.equals(userId)) {
+                    dto.setStatus("HOST");
+                } else if (raisedHandIds.contains(userId)) {
+                    dto.setStatus("RAISING_HAND");
+                } else {
+                    dto.setStatus(ParticipantStatus.ACTIVE.name());
+                }
+
+                participants.add(dto);
+            }
+        }
+
+        // 6. Sắp xếp lại danh sách: Ưu tiên Host lên đầu cùng, sau đó giữ nguyên thứ tự Join
+        participants.sort((p1, p2) -> {
+            if ("HOST".equals(p1.getStatus()) && !"HOST".equals(p2.getStatus())) return -1;
+            if (!"HOST".equals(p1.getStatus()) && "HOST".equals(p2.getStatus())) return 1;
+            return 0;
+        });
+
+        return participants;
+    }
     @Override
     @Transactional
-    public JoinMeetingResponse joinMeeting(String meetingCode, String keycloakId, String meetingPassword) {
-        log.info("ServiceImpl: User (Keycloak) [{}] cố gắng join phòng [{}]", keycloakId, meetingCode);
+    public JoinMeetingResponse joinMeeting(String meetingCode, String meetingPassword) {
+        String internalUserId = UserContext.getUserId();
+        log.info("ServiceImpl: User (Internal) [{}] cố gắng join phòng [{}]", internalUserId, meetingCode);
 
         // 1. Tìm Meeting
         MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cuộc họp: " + meetingCode));
 
-        // 2. Tìm User để lấy ID nội bộ (Bắt buộc)
-        UserEntity user = userRepository.findByKeycloakId(keycloakId)
-                .orElseThrow(() -> new IllegalArgumentException("User chưa được đồng bộ: " + keycloakId));
+        // 2. Tìm User để lấy thông tin
+        UserEntity user = userRepository.findById(internalUserId)
+                .orElseThrow(() -> new IllegalArgumentException("User không tồn tại: " + internalUserId));
 
-        String internalUserId = user.getId().toString();
         log.error("-------------------------------------------");
-        log.error("DATABASE HOST ID: [{}] (Length: {})", meeting.getHostId(), meeting.getHostId() != null ? meeting.getHostId().length() : 0);
-        log.error("CURRENT USER  ID: [{}] (Length: {})", internalUserId, internalUserId != null ? internalUserId.length() : 0);
+        log.error("DATABASE HOST ID: [{}] (Length: {})", meeting.getHostId(),
+                meeting.getHostId() != null ? meeting.getHostId().length() : 0);
+        log.error("CURRENT USER  ID: [{}] (Length: {})", internalUserId,
+                internalUserId != null ? internalUserId.length() : 0);
         log.error("SO SANH BANG EQUALS: {}", meeting.getHostId().equals(internalUserId));
         log.error("-------------------------------------------");
         // 3. 🔥 ĐẶC QUYỀN CỦA HOST: Check Host trước
@@ -144,8 +213,8 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         boolean isWaitingRoomEnabled = meeting.getIsWaitingRoomEnabled() != null && meeting.getIsWaitingRoomEnabled();
 
         if (!isWaitingRoomEnabled) {
-            log.info("✅ Guest [{}] vào phòng [{}]", internalUserId, meetingCode);
-            addActiveParticipant(meetingCode, internalUserId); // ⚠️ DÙNG ID NỘI BỘ
+            log.info("Guest [{}] vào phòng [{}]", internalUserId, meetingCode);
+            addActiveParticipant(meetingCode, internalUserId);
             return JoinMeetingResponse.builder()
                     .meetingCode(meetingCode)
                     .userId(internalUserId)
@@ -154,9 +223,8 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
                     .build();
         }
 
-        // Nhánh cuối: Guest & Waiting Room bật
-        log.info("⏳ Guest [{}] đang chờ duyệt vào phòng [{}]", internalUserId, meetingCode);
-        addWaitingParticipant(meetingCode, internalUserId); // ⚠️ DÙNG ID NỘI BỘ
+        log.info(" [{}] đang chờ duyệt vào phòng [{}]", internalUserId, meetingCode);
+        addWaitingParticipant(meetingCode, internalUserId);
         notifyHostAboutKnock(meetingCode, user);
 
         return JoinMeetingResponse.builder()
@@ -178,6 +246,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         log.debug(" Added active participant [{}] to room [{}] with TTL={} hours",
                 userId, meetingCode, ACTIVE_PARTICIPANTS_TTL_HOURS);
     }
+
     private void addWaitingParticipant(String meetingCode, String userId) {
         String waitingKey = WAITING_PARTICIPANTS_PREFIX + meetingCode;
         double score = System.currentTimeMillis();
@@ -188,12 +257,13 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         log.debug(" Added waiting participant [{}] to room [{}] with TTL={} minutes",
                 userId, meetingCode, WAITING_PARTICIPANTS_TTL_MINUTES);
     }
+
     @Override
-    public void toggleRaiseHand(String meetingCode, String keycloakId, boolean isRaising) {
-        UserEntity user = userRepository.findByKeycloakId(keycloakId)
+    public void toggleRaiseHand(String meetingCode, boolean isRaising) {
+        String internalUserId = UserContext.getUserId();
+        UserEntity user = userRepository.findById(internalUserId)
                 .orElseThrow(() -> new IllegalArgumentException("User không tồn tại"));
 
-        String internalUserId = user.getId();
         String key = RAISED_HANDS_PREFIX + meetingCode;
 
         Map<String, Object> payload = new HashMap<>();
@@ -265,19 +335,18 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         // Payload gọn nhẹ: { "action": "RAISE", "userId": "uuid-123" }
         messagingTemplate.convertAndSend(
                 "/topic/meeting." + meetingCode + ".raised-hands",
-                Map.of("action", action, "userId", userId)
-        );
+                Map.of("action", action, "userId", userId));
     }
 
-
-    /** Gửi WebSocket notification đến Host về knock request
+    /**
+     * Gửi WebSocket notification đến Host về knock request
      */
     private void notifyHostAboutKnock(String meetingCode, UserEntity user) {
         try {
             String userId = user.getId();
             String pendingKnockKey = PENDING_KNOCK_PREFIX + meetingCode + ":" + userId;
 
-            //  Kiểm tra xem user này đã knock gần đây chưa
+            // Kiểm tra xem user này đã knock gần đây chưa
             Boolean alreadyKnocking = redisTemplate.hasKey(pendingKnockKey);
 
             if (Boolean.TRUE.equals(alreadyKnocking)) {
@@ -299,9 +368,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
                             "userName", userName,
                             "userEmail", user.getEmail(),
                             "avatarUrl", user.getAvatarUrl(),
-                            "message", hostNotificationMessage
-                    )
-            );
+                            "message", hostNotificationMessage));
             log.info(" Sent knock notification for user [{}] to room [{}]", userId, meetingCode);
         } catch (Exception e) {
             log.error(" Error sending knock notification for user [{}]", user.getId(), e);
@@ -335,4 +402,3 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         return nameList.append(" ").append(verb).append(" already here").toString();
     }
 }
-

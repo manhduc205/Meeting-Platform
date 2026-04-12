@@ -24,6 +24,8 @@ spring:
       host: localhost
       port: 6379
       password: "" # Điền pass vào đây nếu máy bạn có cài, không thì để trống
+    mongodb:
+      auto-index-creation: true
   security:
     oauth2:
       resourceserver:

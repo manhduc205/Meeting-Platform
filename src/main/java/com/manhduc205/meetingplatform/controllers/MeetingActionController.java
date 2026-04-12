@@ -19,10 +19,9 @@ public class MeetingActionController {
     @PostMapping("/raise-hand")
     public ResponseEntity<Void> toggleRaiseHand(
             @PathVariable String meetingCode,
-            @RequestParam boolean isRaising,
-            @AuthenticationPrincipal Jwt jwt) {
+            @RequestParam boolean isRaising) {
 
-        participantService.toggleRaiseHand(meetingCode, jwt.getSubject(), isRaising);
+        participantService.toggleRaiseHand(meetingCode, isRaising);
         return ResponseEntity.ok().build();
     }
 

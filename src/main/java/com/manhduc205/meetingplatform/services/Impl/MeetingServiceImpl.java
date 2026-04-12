@@ -9,6 +9,7 @@ import com.manhduc205.meetingplatform.models.UserEntity;
 import com.manhduc205.meetingplatform.repositories.MeetingRepository;
 import com.manhduc205.meetingplatform.repositories.UserRepository;
 import com.manhduc205.meetingplatform.services.MeetingService;
+import com.manhduc205.meetingplatform.utils.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,13 +23,14 @@ import java.security.SecureRandom;
 public class MeetingServiceImpl implements MeetingService {
 
     private final MeetingRepository meetingRepository;
-    private final  UserRepository userRepository;
+    private final UserRepository userRepository;
     private final MeetingMapper meetingMapper;
 
     @Override
     @Transactional
-    public MeetingResponse createMeeting(MeetingCreateRequest request, String keycloakId) {
-        log.info("ServiceImpl: Tạo cuộc họp định dạng số cho Host: {}", keycloakId);
+    public MeetingResponse createMeeting(MeetingCreateRequest request) {
+        String internalUserId = UserContext.getUserId();
+        log.info("ServiceImpl: Tạo cuộc họp cho host: {}", internalUserId);
 
         String meetingCode;
         do {
@@ -36,12 +38,8 @@ public class MeetingServiceImpl implements MeetingService {
         } while (meetingRepository.existsByMeetingCode(meetingCode));
 
         MeetingEntity entity = meetingMapper.toEntity(request);
-        UserEntity host = userRepository.findByKeycloakId(keycloakId)
-                .orElseThrow(() -> new IllegalArgumentException("User chưa đồng bộ về DB!"));
-
-        String userId = host.getId().toString();
         entity.setMeetingCode(meetingCode);
-        entity.setHostId(userId);
+        entity.setHostId(internalUserId);
         entity.setStatus(MeetingStatus.SCHEDULED.name());
 
         if (request.getIsWaitingRoomEnabled() == null) {
@@ -52,6 +50,7 @@ public class MeetingServiceImpl implements MeetingService {
 
         return meetingMapper.ToMeetingResponse(saved);
     }
+
     private String generateNumericCode(int length) {
         java.security.SecureRandom random = new java.security.SecureRandom();
         StringBuilder sb = new StringBuilder();
@@ -64,23 +63,25 @@ public class MeetingServiceImpl implements MeetingService {
         }
         return sb.toString();
     }
+
     @Override
-    public MeetingResponse endMeeting(String meetingCode, String hostId) {
-        log.info("ServiceImpl: Kết thúc cuộc họp với ID: {} bởi host: {}", meetingCode, hostId);
+    public MeetingResponse endMeeting(String meetingCode) {
+        String internalUserId = UserContext.getUserId();
+        log.info("ServiceImpl: Kết thúc cuộc họp với ID: {} bởi host: {}", meetingCode, internalUserId);
         MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cuộc họp với mã: " + meetingCode));
 
-        if (!meeting.getHostId().equals(hostId)) {
+        if (!meeting.getHostId().equals(internalUserId)) {
             throw new SecurityException("Bạn không có quyền! Chỉ chủ phòng mới được kết thúc cuộc họp.");
         }
-        if(meeting.getStatus().equals(MeetingStatus.ENDED.name())){
+        if (meeting.getStatus().equals(MeetingStatus.ENDED.name())) {
             throw new IllegalStateException("Cuộc họp đã kết thúc trước đó.");
         }
         meeting.setStatus(MeetingStatus.ENDED.name());
         meeting.setEndTime(java.time.LocalDateTime.now());
 
         MeetingEntity saved = meetingRepository.save(meeting);
-        log.info("ServiceImpl: Cuộc họp [{}] đã được kết thúc thành công bởi host [{}]", meetingCode, hostId);
+        log.info("ServiceImpl: Cuộc họp [{}] đã được kết thúc thành công bởi host [{}]", meetingCode, internalUserId);
         return meetingMapper.ToMeetingResponse(saved);
     }
 }

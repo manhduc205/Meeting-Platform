@@ -2,8 +2,12 @@ package com.manhduc205.meetingplatform.services.Impl;
 
 import com.manhduc205.meetingplatform.exceptions.ResourceNotFoundException;
 import com.manhduc205.meetingplatform.models.MeetingEntity;
+import com.manhduc205.meetingplatform.models.UserEntity;
 import com.manhduc205.meetingplatform.repositories.MeetingRepository;
+import com.manhduc205.meetingplatform.repositories.UserRepository;
 import com.manhduc205.meetingplatform.services.HostService;
+import com.manhduc205.meetingplatform.services.UserIdCacheService;
+import com.manhduc205.meetingplatform.utils.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -17,41 +21,54 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Slf4j
 public class HostServiceImpl implements HostService {
+
     private final MeetingRepository meetingRepository;
+    private final UserRepository userRepository;
+    private final UserIdCacheService userIdCacheService;
     private final SimpMessagingTemplate messagingTemplate;
 
-    private MeetingEntity getValidatedMeeting(String meetingCode, String requesterId) {
+    private MeetingEntity getValidatedMeeting(String meetingCode) {
+        String internalUserId = UserContext.getUserId();
         MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Meeting not found"));
-        if (!meeting.getHostId().equals(requesterId)) {
+
+        if (!meeting.getHostId().equals(internalUserId)) {
+            log.warn("Cảnh báo bảo mật: User [{}] cố gắng dùng quyền Host tại phòng [{}]", internalUserId, meetingCode);
             throw new SecurityException("Chỉ Host mới có quyền thực hiện hành động này");
         }
         return meeting;
     }
 
+    @Override
     @Transactional
-    public void updateSecuritySetting(String meetingCode, String requesterId, String type, boolean enabled) {
-        MeetingEntity meeting = getValidatedMeeting(meetingCode, requesterId);
+    public void updateSecuritySetting(String meetingCode, String type, boolean enabled) {
+        MeetingEntity meeting = getValidatedMeeting(meetingCode);
 
         switch (type) {
-            case "LOCK_MEETING": meeting.setIsLocked(enabled); break;
-            case "WAITING_ROOM": meeting.setIsWaitingRoomEnabled(enabled); break;
-            case "DISABLE_SCREEN_SHARE": meeting.setIsScreenShareDisabled(enabled); break;
+            case "LOCK_MEETING":
+                meeting.setIsLocked(enabled);
+                break;
+            case "WAITING_ROOM":
+                meeting.setIsWaitingRoomEnabled(enabled);
+                break;
+            case "DISABLE_SCREEN_SHARE":
+                meeting.setIsScreenShareDisabled(enabled);
+                break;
         }
         meetingRepository.save(meeting);
 
-        // Gửi thông báo chuyển đổi trạng thái cho toàn phòng
         sendHostCommand(meetingCode, "SETTING_CHANGED", Map.of("type", type, "enabled", enabled));
     }
 
-
-    public void muteAll(String meetingCode, String requesterId) {
-        getValidatedMeeting(meetingCode, requesterId);
+    @Override
+    public void muteAll(String meetingCode) {
+        getValidatedMeeting(meetingCode);
         sendHostCommand(meetingCode, "MUTE_ALL", null);
     }
 
-    public void kickUser(String meetingCode, String requesterId, String targetUserId) {
-        getValidatedMeeting(meetingCode, requesterId);
+    @Override
+    public void kickUser(String meetingCode, String targetUserId) {
+        getValidatedMeeting(meetingCode);
         sendHostCommand(meetingCode, "KICK_PARTICIPANT", Map.of("targetId", targetUserId));
     }
 

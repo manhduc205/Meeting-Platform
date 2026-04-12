@@ -21,7 +21,17 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
+  mongodb:
+    image: mongo:7.0
+    container_name: meeting-mongodb
+    environment:
+      MONGO_INITDB_DATABASE: meetingplatform_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - meeting-network
   keycloak:
     image: quay.io/keycloak/keycloak:23.0
     container_name: meeting-keycloak
@@ -77,3 +87,5 @@ volumes:
   redis_data:
     driver: local
   postgres_data:
+  mongodb_data:
+    driver: local

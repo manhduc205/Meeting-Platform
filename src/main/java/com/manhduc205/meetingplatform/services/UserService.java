@@ -8,6 +8,6 @@ public interface UserService {
 
     void syncUserFromJwt(Jwt jwt);
 
-    UserProfileResponse getCurrentUserProfile(String keycloakId);
-    UserProfileResponse updateProfile(String keycloakId, UserUpdateRequest request);
+    UserProfileResponse getCurrentUserProfile();
+    UserProfileResponse updateProfile(UserUpdateRequest request);
 }

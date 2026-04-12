@@ -7,8 +7,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
@@ -23,19 +21,15 @@ public class UserController {
         return ResponseEntity.ok("User synchronized successfully");
     }
     @GetMapping("/me")
-    public ResponseEntity<UserProfileResponse> getMyProfile(@AuthenticationPrincipal Jwt jwt) {
-        String keycloakId = jwt.getSubject();
-        UserProfileResponse response = userService.getCurrentUserProfile(keycloakId);
+    public ResponseEntity<UserProfileResponse> getMyProfile() {
+        UserProfileResponse response = userService.getCurrentUserProfile();
         return ResponseEntity.ok(response);
     }
 
     @PutMapping("/me")
-    public ResponseEntity<UserProfileResponse> updateProfile(
-            @AuthenticationPrincipal Jwt jwt,
-            @Valid @RequestBody UserUpdateRequest request) {
+    public ResponseEntity<UserProfileResponse> updateProfile(@Valid @RequestBody UserUpdateRequest request) {
 
-        String keycloakId = jwt.getSubject();
-        UserProfileResponse response = userService.updateProfile(keycloakId, request);
+        UserProfileResponse response = userService.updateProfile(request);
         return ResponseEntity.ok(response);
     }
 }
