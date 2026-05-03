@@ -8,6 +8,8 @@ import com.manhduc205.meetingplatform.services.MeetingPresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -19,7 +21,8 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class MeetingPresenceServiceImpl implements MeetingPresenceService {
     private final RedisTemplate<String, Object> redisTemplate;
-
+     private final StringRedisTemplate stringRedisTemplate;
+     private final SimpMessagingTemplate messagingTemplate;
     // room:abc-def-ghi:users
     // ZSet sử dụng timestamp làm score để maintain insertion order
     private static final String ROOM_KEY_PREFIX = "room:";
@@ -58,6 +61,29 @@ public class MeetingPresenceServiceImpl implements MeetingPresenceService {
         this.removeOnlineUser(meetingCode, userId);
         redisTemplate.opsForValue().set(pendingKey, "WAITING_FOR_RECONNECT", 60, TimeUnit.SECONDS);
     }
+
+
+
+    public void handleActionMessage(SignalingMessage message) {
+        if ("REACTION".equals(message.getType())) {
+            String rateLimitKey = "rate_limit:reaction:" + message.getMeetingCode() + ":" + message.getSenderId();
+
+            Long count = stringRedisTemplate.opsForValue().increment(rateLimitKey);
+
+            if (count != null && count == 1) {
+                // Reset bộ đếm sau 2 giây
+                stringRedisTemplate.expire(rateLimitKey, 2, TimeUnit.SECONDS);
+            }
+
+            if (count != null && count > 5) {
+                return;
+            }
+        }
+
+        String roomTopic = "/topic/meeting." + message.getMeetingCode();
+        messagingTemplate.convertAndSend(roomTopic, message);
+    }
+
     @Override
     public List<SignalingMessage> handlePresenceUpdate(SignalingMessage message) {
         String mCode = message.getMeetingCode();

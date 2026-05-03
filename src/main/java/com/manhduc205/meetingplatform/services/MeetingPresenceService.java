@@ -10,7 +10,7 @@ public interface MeetingPresenceService {
     void removeOnlineUser(String meetingCode, String userId);
     Set<Object> getOnlineUsers(String meetingCode);
 //    boolean shouldSwitchToSfu(String meetingCode);
-    // Trả về danh sách các tin nhắn cần Broadcast sau khi xử lý Join/Leave
+    void handleActionMessage(SignalingMessage message);
     List<SignalingMessage> handlePresenceUpdate(SignalingMessage message);
     void markUserAsReconnecting(String meetingCode, String userId);
 }

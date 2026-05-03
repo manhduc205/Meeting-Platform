@@ -15,5 +15,6 @@ public class ParticipantDto {
     private String lastName;     // Họ
     private String avatarUrl;    // Avatar
     private String status;       // WAITING, APPROVED, ACTIVE
+    private Boolean isMe;
 }
 

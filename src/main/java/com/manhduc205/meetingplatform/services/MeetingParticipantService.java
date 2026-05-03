@@ -4,19 +4,20 @@ import com.manhduc205.meetingplatform.dtos.response.ActiveParticipantsResponse;
 import com.manhduc205.meetingplatform.dtos.response.JoinMeetingResponse;
 import com.manhduc205.meetingplatform.dtos.response.ParticipantDto;
 import com.manhduc205.meetingplatform.dtos.response.RaisedHandResponse;
+import com.manhduc205.meetingplatform.enums.WaitingRoomAction;
 
 import java.util.List;
 
-/**
- * Service quản lý participant và logic join phòng
- */
 public interface MeetingParticipantService {
-
-    ActiveParticipantsResponse getActiveParticipants(String meetingCode);
-    List<ParticipantDto> getAllParticipants(String meetingCode);
-    RaisedHandResponse getRaisedHands(String meetingCode);
+    ActiveParticipantsResponse getActiveParticipants(String meetingCode); // Cho màn hình Lobby
+    List<ParticipantDto> getAllParticipants(String meetingCode); // Cơ bản
+    List<ParticipantDto> getSidebarParticipants(String meetingCode); // Cho Sidebar (Có Host, Hand)
 
     JoinMeetingResponse joinMeeting(String meetingCode, String meetingPassword);
 
+    List<ParticipantDto> getWaitingParticipants(String meetingCode);
+    void processWaitingParticipants(String meetingCode, List<String> userIds, WaitingRoomAction action);
+
     void toggleRaiseHand(String meetingCode, boolean isRaising);
+    RaisedHandResponse getRaisedHands(String meetingCode);
 }

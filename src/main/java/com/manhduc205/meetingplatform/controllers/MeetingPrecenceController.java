@@ -46,10 +46,11 @@ public class MeetingPrecenceController {
                 List<SignalingMessage> responses = presenceService.handlePresenceUpdate(message);
                 responses.forEach(res -> messagingTemplate.convertAndSend(roomTopic, res));
             }
+
             case SIGNALING -> messagingTemplate.convertAndSendToUser(
                     message.getTargetId(), "/queue/signaling", message);
 
-            case ACTION -> messagingTemplate.convertAndSend(roomTopic, message);
+            case ACTION -> presenceService.handleActionMessage(message);
         }
     }
 
