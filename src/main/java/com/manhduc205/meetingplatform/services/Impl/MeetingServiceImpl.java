@@ -8,6 +8,7 @@ import com.manhduc205.meetingplatform.models.MeetingEntity;
 import com.manhduc205.meetingplatform.repositories.MeetingRepository;
 import com.manhduc205.meetingplatform.repositories.UserRepository;
 import com.manhduc205.meetingplatform.services.MeetingService;
+import com.manhduc205.meetingplatform.services.RecordingService;
 import com.manhduc205.meetingplatform.utils.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +23,7 @@ public class MeetingServiceImpl implements MeetingService {
     private final MeetingRepository meetingRepository;
     private final UserRepository userRepository;
     private final MeetingMapper meetingMapper;
-
+    private final RecordingService recordingService;
     @Override
     @Transactional
     public MeetingResponse createMeeting(MeetingCreateRequest request) {
@@ -74,6 +75,7 @@ public class MeetingServiceImpl implements MeetingService {
         if (meeting.getStatus().equals(MeetingStatus.ENDED.name())) {
             throw new IllegalStateException("Cuộc họp đã kết thúc trước đó.");
         }
+        recordingService.stopActiveRecordings(meetingCode);
         meeting.setStatus(MeetingStatus.ENDED.name());
         meeting.setEndTime(java.time.LocalDateTime.now());
 

@@ -6,6 +6,7 @@ import java.util.List;
 public interface RecordingService {
     RecordingResponse startRecording(String meetingCode);
     void stopRecording(String meetingCode, String egressId);
+    void stopActiveRecordings(String meetingCode);
     void handleEgressWebhook(String payload);
     List<RecordingResponse> getMeetingRecordings(String meetingCode);
 }

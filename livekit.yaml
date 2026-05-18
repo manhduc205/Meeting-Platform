@@ -1,0 +1,19 @@
+port: 7880
+bind_addresses:
+  - ""
+keys:
+  livekit_api_key_2026: "livekit_api_secret_2026_super_secure"
+
+# 🔴 BẮT BUỘC BỔ SUNG BLOCK NÀY: Kết nối LiveKit Server với Redis trong Docker Network
+redis:
+  address: redis:6379 # Điền chính xác "Tên_Service_Redis" trong file docker-compose của em
+  password: ""
+  db: 0
+
+rtc:
+  tcp_port: 7881
+  use_external_ip: false
+webhook:
+  api_key: livekit_api_key_2026
+  urls:
+    - "http://host.docker.internal:8081/api/v1/webhooks/livekit/egress"

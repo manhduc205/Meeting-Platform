@@ -4,15 +4,23 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: meeting-redis
+    restart: always
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
       - meeting-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
   postgres:
     image: postgres:16
     container_name: meeting-postgres
+    restart: always
     environment:
       POSTGRES_DB: meetingplatform
       POSTGRES_USER: postgres
@@ -21,9 +29,18 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - meeting-network # Fix: Thêm mạng để Keycloak nhìn thấy
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
   mongodb:
     image: mongo:7.0
     container_name: meeting-mongodb
+    restart: always
     environment:
       MONGO_INITDB_DATABASE: meetingplatform_mongo
     ports:
@@ -32,10 +49,18 @@ services:
       - mongodb_data:/data/db
     networks:
       - meeting-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G # Giới hạn không cho Mongo ăn hết RAM cache
+
   keycloak:
     image: quay.io/keycloak/keycloak:23.0
     container_name: meeting-keycloak
-    command: start-dev
+    # 🔴 Bắt buộc dùng lệnh start-dev kèm 2 cờ bỏ qua mã hóa nghiêm ngặt ở local
+    command: start-dev --http-enabled=true --hostname-strict-https=false
+    restart: always
     environment:
       KC_HOSTNAME: localhost
       KC_HOSTNAME_PORT: 8080
@@ -50,6 +75,9 @@ services:
       - "8080:8080"
     depends_on:
       - postgres
+    networks:
+      - meeting-network
+
   livekit:
     image: livekit/livekit-server:latest
     container_name: meeting-livekit
@@ -58,15 +86,64 @@ services:
       - "7880:7880"
       - "7881:7881"
       - "50000-50010:50000-50010/udp"
-    # Dùng lệnh này để cấu hình trực tiếp, không cần file bên ngoài
     command:
-      - --dev
-      - --node-ip
-      - 0.0.0.0
-      - --keys
-      - "livekit_api_key_2026: livekit_api_secret_2026_super_secure"
+      - --config
+      - /etc/livekit.yaml
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml
+    depends_on:
+      - redis
     networks:
       - meeting-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  livekit-egress:
+    image: livekit/egress:latest
+    container_name: meeting-egress
+    restart: always # Thêm để đảm bảo tính sẵn sàng cao
+    privileged: true
+    environment:
+      EGRESS_CONFIG_FILE: /etc/egress.yaml
+    command:
+      - --config
+      - /etc/egress.yaml
+    volumes:
+      - ./egress.yaml:/etc/egress.yaml
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - redis
+      - livekit
+    networks:
+      - meeting-network
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 3500M
+  minio:
+    image: minio/minio:latest
+    container_name: meeting-minio
+    restart: always
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - meeting-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
 
   coturn:
     image: coturn/coturn:latest
@@ -79,6 +156,22 @@ services:
     command:
       - -n --min-port=49152 --max-port=49160
       - --realm=meeting.manhduc --user=ducit:ducpass123
+    networks:
+      - meeting-network # Fix: Thêm mạng
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: meeting-cloudflare-tunnel
+    restart: always
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run
+    networks:
+      - meeting-network
 networks:
   meeting-network:
     driver: bridge
@@ -87,5 +180,8 @@ volumes:
   redis_data:
     driver: local
   postgres_data:
+    driver: local # Fix: Bổ sung driver bị thiếu
   mongodb_data:
+    driver: local
+  minio_data:
     driver: local

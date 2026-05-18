@@ -2,10 +2,10 @@ package com.manhduc205.meetingplatform.services.Impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.manhduc205.meetingplatform.models.dtos.response.RecordingResponse;
 import com.manhduc205.meetingplatform.enums.RecordingStatus;
 import com.manhduc205.meetingplatform.models.MeetingEntity;
 import com.manhduc205.meetingplatform.models.RecordingEntity;
+import com.manhduc205.meetingplatform.models.dtos.response.RecordingResponse;
 import com.manhduc205.meetingplatform.repositories.MeetingRepository;
 import com.manhduc205.meetingplatform.repositories.RecordingRepository;
 import com.manhduc205.meetingplatform.services.RecordingService;
@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,9 +31,6 @@ public class RecordingServiceImpl implements RecordingService {
     private final MeetingRepository meetingRepository;
     private final ObjectMapper objectMapper;
     private final EgressServiceClient egressServiceClient;
-    @Value("${app.livekit.api-key}") private String apiKey;
-    @Value("${app.livekit.api-secret}") private String apiSecret;
-    @Value("${app.livekit.host}") private String liveKitHost;
 
     @Value("${app.minio.access-key}") private String minioAccessKey;
     @Value("${app.minio.secret-key}") private String minioSecretKey;
@@ -40,12 +38,10 @@ public class RecordingServiceImpl implements RecordingService {
     @Value("${app.minio.bucket}") private String minioBucket;
 
     @Override
-    @Transactional
     public RecordingResponse startRecording(String meetingCode) {
         verifyHostPrivilege(meetingCode);
 
         try {
-            // 1. Cấu hình S3 Output (Giữ nguyên)
             S3Upload s3Output = S3Upload.newBuilder()
                     .setAccessKey(minioAccessKey)
                     .setSecret(minioSecretKey)
@@ -54,16 +50,12 @@ public class RecordingServiceImpl implements RecordingService {
                     .setForcePathStyle(true)
                     .build();
 
-            // 2. Build EncodedFileOutput (Giữ nguyên)
             EncodedFileOutput fileOutput = EncodedFileOutput.newBuilder()
                     .setFileType(EncodedFileType.MP4)
                     .setS3(s3Output)
                     .build();
 
-            // 3. SỬA TẠI ĐÂY: Gọi trực tiếp với 2 tham số (RoomName và FileOutput)
-            // SDK của em không nhận đối tượng Request, nó nhận trực tiếp tham số
             var call = egressServiceClient.startRoomCompositeEgress(meetingCode, fileOutput);
-
             EgressInfo info = call.execute().body();
 
             if (info == null) {
@@ -84,24 +76,32 @@ public class RecordingServiceImpl implements RecordingService {
     }
 
     @Override
-    @Transactional
     public void stopRecording(String meetingCode, String egressId) {
-        // 2. Kiểm tra quyền Host (Chỉ Host mới được dừng ghi âm)
         verifyHostPrivilege(meetingCode);
+        executeStopEgress(egressId);
+    }
 
+    @Override
+    public void stopActiveRecordings(String meetingCode) {
+        List<RecordingEntity> recordings = recordingRepository.findAllByMeetingCodeOrderByCreatedAtDesc(meetingCode);
+        for (RecordingEntity recording : recordings) {
+            if (recording.getStatus() == RecordingStatus.STARTING || recording.getStatus() == RecordingStatus.RECORDING) {
+                executeStopEgress(recording.getEgressId());
+            }
+        }
+    }
+
+    private void executeStopEgress(String egressId) {
         try {
-            EgressServiceClient egressClient = EgressServiceClient.create(liveKitHost, apiKey, apiSecret);
-            egressClient.stopEgress(egressId).execute();
-            log.info("Host đã dừng ghi âm cho EgressID: {}", egressId);
+            egressServiceClient.stopEgress(egressId).execute();
+            log.info("Đã gửi lệnh dừng ghi âm cho EgressID: {}", egressId);
         } catch (Exception e) {
-            log.error("Lỗi khi dừng Egress: {}", e.getMessage());
-            throw new RuntimeException("Không thể dừng ghi hình.");
+            log.error("Cảnh báo khi dừng Egress [{}]: {}", egressId, e.getMessage());
         }
     }
 
     @Override
     public List<RecordingResponse> getMeetingRecordings(String meetingCode) {
-        // 3. Quyền xem lại: Mọi người trong phòng đều có thể lấy danh sách bản ghi
         return recordingRepository.findAllByMeetingCodeOrderByCreatedAtDesc(meetingCode)
                 .stream()
                 .map(this::mapToResponse)
@@ -113,28 +113,70 @@ public class RecordingServiceImpl implements RecordingService {
     public void handleEgressWebhook(String payload) {
         try {
             JsonNode root = objectMapper.readTree(payload);
+            String event = root.path("event").asText();
+            log.info("Mắt thần Webhook nhận Event: {}", event);
+
+            // 🟢 GIẢI PHÁP TOÀN DIỆN: Tìm EgressID bất kể nó nằm ở tầng nào của JSON
+            String egressId = root.path("egressID").asText(); // Thử lấy ở tầng Root trước
+
             JsonNode egressInfo = root.path("egressInfo");
-            String egressId = egressInfo.path("egressId").asText();
+            if ((egressId == null || egressId.isEmpty()) && !egressInfo.isMissingNode() && !egressInfo.isNull()) {
+                egressId = egressInfo.path("egressId").asText(); // Nếu root không có thì lấy trong egressInfo
+            }
 
-            RecordingEntity recording = recordingRepository.findByEgressId(egressId)
-                    .orElseThrow(() -> new IllegalArgumentException("Bản ghi không tồn tại"));
+            // Nếu quét cả 2 tầng vẫn không có egressId (ví dụ event participant_left), bỏ qua an toàn
+            if (egressId == null || egressId.isEmpty()) {
+                log.info("Gói tin thuộc sự kiện chung, không chứa mã định danh Egress. Bỏ qua.");
+                return;
+            }
 
-            int statusInt = egressInfo.path("status").asInt();
-            if (statusInt == 3) {
+            Optional<RecordingEntity> recordingOpt = recordingRepository.findByEgressId(egressId);
+            if (recordingOpt.isEmpty()) {
+                log.warn("Webhook báo về EgressId không tồn tại trong DB: {}", egressId);
+                return;
+            }
+
+            RecordingEntity recording = recordingOpt.get();
+
+            // 🟢 GIẢI PHÁP ĐỌC TRẠNG THÁI: Quét cả tầng Root lẫn tầng EgressInfo
+            String statusStr = root.path("status").asText();
+            if ((statusStr == null || statusStr.isEmpty()) && !egressInfo.isMissingNode() && !egressInfo.isNull()) {
+                statusStr = egressInfo.path("status").asText();
+            }
+
+            log.info("Xử lý dữ liệu EgressID: {} | Khớp trạng thái: {}", egressId, statusStr);
+
+            // Bắt trọn các pha dịch chuyển trạng thái theo String chuẩn hóa
+            if ("EGRESS_ACTIVE".equals(statusStr) || "EGRESS_ENDING".equals(statusStr)) {
                 recording.setStatus(RecordingStatus.RECORDING);
-            } else if (statusInt == 4) {
+            }
+            else if ("EGRESS_COMPLETE".equals(statusStr)) {
                 recording.setStatus(RecordingStatus.COMPLETED);
-                JsonNode fileNode = egressInfo.path("file");
-                if (!fileNode.isMissingNode()) {
-                    recording.setFileUrl(fileNode.path("location").asText());
-                    recording.setDuration(fileNode.path("duration").asLong() / 1000000000L);
+
+                // Trích xuất thông tin file (Thường nằm trong cấu trúc file của egressInfo nếu có)
+                if (!egressInfo.isMissingNode() && !egressInfo.isNull()) {
+                    JsonNode fileNode = egressInfo.path("file");
+                    if (!fileNode.isMissingNode() && !fileNode.isNull()) {
+                        recording.setFileUrl(fileNode.path("location").asText());
+                        recording.setDuration(fileNode.path("duration").asLong() / 1000000000L);
+                    }
                 }
-            } else if (statusInt == 5) {
+
+                // Dự phòng: Nếu LiveKit đổi cấu trúc đường dẫn file, em cấu hình sinh path cứng theo quy hoạch tại đây
+                if (recording.getFileUrl() == null || recording.getFileUrl().isEmpty()) {
+                    // Tên file mặc định của LiveKit thường là: roomName-date.mp4 hoặc egressId.mp4 tùy thuộc config ban đầu
+                    log.info("File node trống, trạng thái COMPLETED vẫn được ghi nhận.");
+                }
+            }
+            else if ("EGRESS_FAILED".equals(statusStr)) {
                 recording.setStatus(RecordingStatus.FAILED);
             }
+
             recordingRepository.save(recording);
+            log.info("🎉 CHÍNH THỨC THÀNH CÔNG: DB cập nhật trạng thái [{}] cho EgressID: {}", recording.getStatus(), egressId);
+
         } catch (Exception e) {
-            log.error("Lỗi Webhook Egress: {}", e.getMessage());
+            log.error("Lỗi parse Webhook Egress: {}", e.getMessage(), e);
         }
     }
 

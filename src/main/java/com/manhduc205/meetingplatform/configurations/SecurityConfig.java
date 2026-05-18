@@ -55,6 +55,7 @@ public class SecurityConfig {
                                 "/api/public/**")
                         .permitAll()
                         .requestMatchers("/api/v1/media/**").permitAll()
+                        .requestMatchers("/api/v1/webhooks/**").permitAll()
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(authenticationEntryPoint()))

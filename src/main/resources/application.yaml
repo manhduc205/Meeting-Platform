@@ -30,8 +30,8 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/meeting-realm
-          jwk-set-uri: http://localhost:8080/realms/meeting-realm/protocol/openid-connect/certs
+          issuer-uri: ${KEYCLOAK_ISSUER_URI}
+          jwk-set-uri: ${KEYCLOAK_JWK_URI}
 app:
   websocket:
     endpoint: "/ws/meeting"
@@ -40,11 +40,18 @@ app:
     broker-queue-prefix: "/queue"
     app-destination-prefix: "/app"
 
-  livekit:
-    host: ws://localhost:7880 # Thay localhost bằng IP Server nếu chạy thực tế
-    api-key: livekit_api_key_2026
-    api-secret: livekit_api_secret_2026_super_secure
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:4200,http://127.0.0.1:5500,https://meeting.videoconnect.click}
 
+  livekit:
+    host: ${LIVEKIT_HOST:http://localhost:7880} # Server SDK requires http/https
+    api-key: ${LIVEKIT_API_KEY:livekit_api_key_2026}
+    api-secret: ${LIVEKIT_API_SECRET:livekit_api_secret_2026_super_secure}
+  minio:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: minioadmin
+    secret-key: minioadmin123
+    bucket: meeting-recordings
   webrtc:
     stun-url: stun:stun.l.google.com:19302
     turn-url: turn:your-turn-server.com:3478
