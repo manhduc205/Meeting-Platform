@@ -1,12 +1,10 @@
 package com.manhduc205.meetingplatform.controllers;
 
-import com.manhduc205.meetingplatform.dtos.request.PollCreateRequest;
-import com.manhduc205.meetingplatform.dtos.response.PollResponse;
+import com.manhduc205.meetingplatform.models.dtos.request.PollCreateRequest;
+import com.manhduc205.meetingplatform.models.dtos.response.PollResponse;
 import com.manhduc205.meetingplatform.services.Impl.PollServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 @RestController

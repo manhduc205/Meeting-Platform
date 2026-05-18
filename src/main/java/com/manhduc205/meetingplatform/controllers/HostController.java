@@ -1,7 +1,7 @@
 package com.manhduc205.meetingplatform.controllers;
 
-import com.manhduc205.meetingplatform.dtos.request.WaitingRoomActionRequest;
-import com.manhduc205.meetingplatform.dtos.response.ParticipantDto;
+import com.manhduc205.meetingplatform.models.dtos.request.WaitingRoomActionRequest;
+import com.manhduc205.meetingplatform.models.dtos.response.ParticipantDto;
 import com.manhduc205.meetingplatform.services.HostService;
 import com.manhduc205.meetingplatform.services.MeetingParticipantService;
 import lombok.RequiredArgsConstructor;

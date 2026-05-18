@@ -1,6 +1,6 @@
 package com.manhduc205.meetingplatform.listeners;
 
-import com.manhduc205.meetingplatform.dtos.request.SignalingMessage;
+import com.manhduc205.meetingplatform.models.dtos.request.SignalingMessage;
 import com.manhduc205.meetingplatform.enums.MessageCategory;
 import com.manhduc205.meetingplatform.enums.PresenceType;
 import com.manhduc205.meetingplatform.services.MeetingPresenceService;

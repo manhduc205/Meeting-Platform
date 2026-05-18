@@ -4,6 +4,7 @@ import com.manhduc205.meetingplatform.filters.UserMappingFilter;
 import com.manhduc205.meetingplatform.security.KeycloakJwtConverter;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -27,6 +28,10 @@ import java.util.List;
 public class SecurityConfig {
     private final KeycloakJwtConverter keycloakJwtConverter;
     private final UserMappingFilter userMappingFilter;
+
+    @Value("${app.cors.allowed-origins}")
+    private String corsAllowedOrigins;
+
     @Bean
     public AuthenticationEntryPoint authenticationEntryPoint() {
         return (request, response, authException) -> {
@@ -63,7 +68,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:3000", "http://localhost:4200", "http://127.0.0.1:5500"));
+        config.setAllowedOrigins(List.of(corsAllowedOrigins.split(",")));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

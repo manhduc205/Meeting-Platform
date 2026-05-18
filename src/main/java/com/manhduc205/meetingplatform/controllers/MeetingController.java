@@ -1,9 +1,9 @@
 package com.manhduc205.meetingplatform.controllers;
 
-import com.manhduc205.meetingplatform.dtos.request.JoinMeetingRequest;
-import com.manhduc205.meetingplatform.dtos.request.MeetingCreateRequest;
-import com.manhduc205.meetingplatform.dtos.response.JoinMeetingResponse;
-import com.manhduc205.meetingplatform.dtos.response.MeetingResponse;
+import com.manhduc205.meetingplatform.models.dtos.request.JoinMeetingRequest;
+import com.manhduc205.meetingplatform.models.dtos.request.MeetingCreateRequest;
+import com.manhduc205.meetingplatform.models.dtos.response.JoinMeetingResponse;
+import com.manhduc205.meetingplatform.models.dtos.response.MeetingResponse;
 import com.manhduc205.meetingplatform.services.MeetingService;
 import com.manhduc205.meetingplatform.services.MeetingParticipantService;
 import lombok.RequiredArgsConstructor;

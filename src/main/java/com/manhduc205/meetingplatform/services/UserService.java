@@ -1,7 +1,7 @@
 package com.manhduc205.meetingplatform.services;
 
-import com.manhduc205.meetingplatform.dtos.request.UserUpdateRequest;
-import com.manhduc205.meetingplatform.dtos.response.UserProfileResponse;
+import com.manhduc205.meetingplatform.models.dtos.request.UserUpdateRequest;
+import com.manhduc205.meetingplatform.models.dtos.response.UserProfileResponse;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 public interface UserService {

@@ -44,7 +44,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // Sử dụng biến từ file cấu hình để đăng ký Endpoint
         registry.addEndpoint(endpoint)
-                .setAllowedOrigins("http://localhost:4200")
                 .setAllowedOriginPatterns(allowedOrigins.split(",")) // Hỗ trợ nhiều domain cách nhau bởi dấu phẩy
                 .withSockJS();
     }

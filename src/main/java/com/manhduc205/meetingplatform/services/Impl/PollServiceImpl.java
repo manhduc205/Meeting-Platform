@@ -1,7 +1,7 @@
 package com.manhduc205.meetingplatform.services.Impl;
 
-import com.manhduc205.meetingplatform.dtos.request.PollCreateRequest;
-import com.manhduc205.meetingplatform.dtos.response.PollResponse;
+import com.manhduc205.meetingplatform.models.dtos.request.PollCreateRequest;
+import com.manhduc205.meetingplatform.models.dtos.response.PollResponse;
 import com.manhduc205.meetingplatform.models.MeetingEntity;
 import com.manhduc205.meetingplatform.models.PollDocument;
 import com.manhduc205.meetingplatform.models.PollOption;

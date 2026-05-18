@@ -1,8 +1,7 @@
 package com.manhduc205.meetingplatform.services;
 
-import com.manhduc205.meetingplatform.dtos.request.MeetingCreateRequest;
-import com.manhduc205.meetingplatform.dtos.response.MeetingResponse;
-import org.springframework.stereotype.Service;
+import com.manhduc205.meetingplatform.models.dtos.request.MeetingCreateRequest;
+import com.manhduc205.meetingplatform.models.dtos.response.MeetingResponse;
 
 public interface MeetingService {
     MeetingResponse createMeeting(MeetingCreateRequest request);

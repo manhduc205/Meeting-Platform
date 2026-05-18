@@ -1,7 +1,6 @@
 package com.manhduc205.meetingplatform.controllers;
 
-import com.manhduc205.meetingplatform.dtos.request.SignalingMessage;
-import com.manhduc205.meetingplatform.enums.*;
+import com.manhduc205.meetingplatform.models.dtos.request.SignalingMessage;
 import com.manhduc205.meetingplatform.services.HeartbeatService;
 import com.manhduc205.meetingplatform.services.MeetingPresenceService;
 import lombok.RequiredArgsConstructor;

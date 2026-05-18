@@ -1,10 +1,10 @@
 package com.manhduc205.meetingplatform.services.Impl;
 
-import com.manhduc205.meetingplatform.dtos.mappers.ParticipantMapper;
-import com.manhduc205.meetingplatform.dtos.response.ActiveParticipantsResponse;
-import com.manhduc205.meetingplatform.dtos.response.JoinMeetingResponse;
-import com.manhduc205.meetingplatform.dtos.response.ParticipantDto;
-import com.manhduc205.meetingplatform.dtos.response.RaisedHandResponse;
+import com.manhduc205.meetingplatform.models.dtos.mappers.ParticipantMapper;
+import com.manhduc205.meetingplatform.models.dtos.response.ActiveParticipantsResponse;
+import com.manhduc205.meetingplatform.models.dtos.response.JoinMeetingResponse;
+import com.manhduc205.meetingplatform.models.dtos.response.ParticipantDto;
+import com.manhduc205.meetingplatform.models.dtos.response.RaisedHandResponse;
 import com.manhduc205.meetingplatform.enums.ParticipantStatus;
 import com.manhduc205.meetingplatform.enums.WaitingRoomAction;
 import com.manhduc205.meetingplatform.models.MeetingEntity;

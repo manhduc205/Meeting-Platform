@@ -1,11 +1,10 @@
 package com.manhduc205.meetingplatform.services.Impl;
 
-import com.manhduc205.meetingplatform.dtos.mappers.MeetingMapper;
-import com.manhduc205.meetingplatform.dtos.request.MeetingCreateRequest;
-import com.manhduc205.meetingplatform.dtos.response.MeetingResponse;
+import com.manhduc205.meetingplatform.models.dtos.mappers.MeetingMapper;
+import com.manhduc205.meetingplatform.models.dtos.request.MeetingCreateRequest;
+import com.manhduc205.meetingplatform.models.dtos.response.MeetingResponse;
 import com.manhduc205.meetingplatform.enums.MeetingStatus;
 import com.manhduc205.meetingplatform.models.MeetingEntity;
-import com.manhduc205.meetingplatform.models.UserEntity;
 import com.manhduc205.meetingplatform.repositories.MeetingRepository;
 import com.manhduc205.meetingplatform.repositories.UserRepository;
 import com.manhduc205.meetingplatform.services.MeetingService;
@@ -14,8 +13,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.security.SecureRandom;
 
 @Service
 @RequiredArgsConstructor

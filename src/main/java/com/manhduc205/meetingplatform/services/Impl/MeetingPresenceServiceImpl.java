@@ -1,9 +1,8 @@
 package com.manhduc205.meetingplatform.services.Impl;
 
-import com.manhduc205.meetingplatform.dtos.request.SignalingMessage;
+import com.manhduc205.meetingplatform.models.dtos.request.SignalingMessage;
 import com.manhduc205.meetingplatform.enums.MessageCategory;
 import com.manhduc205.meetingplatform.enums.PresenceType;
-import com.manhduc205.meetingplatform.enums.SignalingType;
 import com.manhduc205.meetingplatform.services.MeetingPresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,7 +11,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 

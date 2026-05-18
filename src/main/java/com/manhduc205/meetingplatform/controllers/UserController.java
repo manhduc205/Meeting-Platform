@@ -1,7 +1,7 @@
 package com.manhduc205.meetingplatform.controllers;
 
-import com.manhduc205.meetingplatform.dtos.request.UserUpdateRequest;
-import com.manhduc205.meetingplatform.dtos.response.UserProfileResponse;
+import com.manhduc205.meetingplatform.models.dtos.request.UserUpdateRequest;
+import com.manhduc205.meetingplatform.models.dtos.response.UserProfileResponse;
 import com.manhduc205.meetingplatform.services.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

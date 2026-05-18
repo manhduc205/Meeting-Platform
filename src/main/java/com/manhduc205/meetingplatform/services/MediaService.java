@@ -1,6 +1,6 @@
 package com.manhduc205.meetingplatform.services;
 
-import com.manhduc205.meetingplatform.dtos.response.MediaJoinResponse;
+import com.manhduc205.meetingplatform.models.dtos.response.MediaJoinResponse;
 
 public interface MediaService {
     MediaJoinResponse prepareMediaConnection(String meetingCode );

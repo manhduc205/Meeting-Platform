@@ -1,6 +1,6 @@
 package com.manhduc205.meetingplatform.services.Impl;
 
-import com.manhduc205.meetingplatform.dtos.response.MediaJoinResponse;
+import com.manhduc205.meetingplatform.models.dtos.response.MediaJoinResponse;
 import com.manhduc205.meetingplatform.models.MeetingEntity;
 import com.manhduc205.meetingplatform.repositories.MeetingRepository;
 import com.manhduc205.meetingplatform.services.MediaService;

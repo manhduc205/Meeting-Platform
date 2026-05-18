@@ -1,6 +1,6 @@
 package com.manhduc205.meetingplatform.services;
 
-import com.manhduc205.meetingplatform.dtos.request.SignalingMessage;
+import com.manhduc205.meetingplatform.models.dtos.request.SignalingMessage;
 
 import java.util.List;
 import java.util.Set;
