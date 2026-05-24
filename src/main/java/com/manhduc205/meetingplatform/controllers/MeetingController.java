@@ -11,6 +11,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/meetings")
@@ -22,6 +24,24 @@ public class MeetingController {
     @PostMapping("/create")
     public ResponseEntity<MeetingResponse> createMeeting(@RequestBody MeetingCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(meetingService.createMeeting(request));
+    }
+
+    @GetMapping("/my-meetings")
+    public ResponseEntity<List<MeetingResponse>> getMyScheduledMeetings() {
+        return ResponseEntity.ok(meetingService.getMyMeetings());
+    }
+
+    @PutMapping("/{meetingCode}")
+    public ResponseEntity<MeetingResponse> updateMeeting(
+            @PathVariable String meetingCode,
+            @RequestBody MeetingCreateRequest request) {
+        return ResponseEntity.ok(meetingService.updateMeeting(meetingCode, request));
+    }
+
+    @DeleteMapping("/{meetingCode}")
+    public ResponseEntity<Void> cancelMeeting(@PathVariable String meetingCode) {
+        meetingService.cancelMeeting(meetingCode);
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/{meetingCode}/end")

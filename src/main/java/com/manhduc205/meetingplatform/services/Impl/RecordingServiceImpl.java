@@ -50,12 +50,30 @@ public class RecordingServiceImpl implements RecordingService {
                     .setForcePathStyle(true)
                     .build();
 
+            String filename = meetingCode + "-" + System.currentTimeMillis() + ".mp4";
+
             EncodedFileOutput fileOutput = EncodedFileOutput.newBuilder()
                     .setFileType(EncodedFileType.MP4)
+                    .setFilepath(filename)
                     .setS3(s3Output)
                     .build();
 
-            var call = egressServiceClient.startRoomCompositeEgress(meetingCode, fileOutput);
+            // 🟢 GIẢI PHÁP CHẤT LƯỢNG CAO: Định nghĩa thông số mã hóa phần cứng tốt nhất
+            // Ép cấu hình lên H264_1080P_30FPS giúp chữ nghĩa nét căng, triệt tiêu vỡ hạt
+            // 🟢 FIX CHÍ MẠNG: Đổi H264_1080P_30FPS thành H264_1080P30 chuẩn mã nguồn LiveKit 0.8.2
+            EncodingOptionsPreset preset = EncodingOptionsPreset.H264_1080P_30;
+
+            // 🎯 GỌI HÀM OVERLOAD ĐẦY ĐỦ CỦA BẢN 0.8.2:
+            // Signature: startRoomCompositeEgress(room, fileOutput, layout, preset)
+            // Việc truyền preset H264_1080P_30FPS sẽ buộc trình duyệt ngầm mở độ phân giải lớn,
+            // tự động tối ưu hóa lại tỷ lệ co giãn của layout "sidebar" để khít khung hình, giảm dải đen thừa.
+            var call = egressServiceClient.startRoomCompositeEgress(
+                    meetingCode,
+                    fileOutput,
+                    "grid",
+                    preset
+            );
+
             EgressInfo info = call.execute().body();
 
             if (info == null) {
@@ -70,7 +88,7 @@ public class RecordingServiceImpl implements RecordingService {
 
             return mapToResponse(recordingRepository.save(entity));
         } catch (Exception e) {
-            log.error("Lỗi khởi tạo Egress: {}", e.getMessage());
+            log.error("Lỗi khởi tạo Egress với cấu hình High-Definition: {}", e.getMessage());
             throw new RuntimeException("Không thể bắt đầu ghi hình cuộc họp: " + e.getMessage());
         }
     }
@@ -116,7 +134,6 @@ public class RecordingServiceImpl implements RecordingService {
             String event = root.path("event").asText();
             log.info("Mắt thần Webhook nhận Event: {}", event);
 
-            // 🟢 GIẢI PHÁP TOÀN DIỆN: Tìm EgressID bất kể nó nằm ở tầng nào của JSON
             String egressId = root.path("egressID").asText(); // Thử lấy ở tầng Root trước
 
             JsonNode egressInfo = root.path("egressInfo");

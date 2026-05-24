@@ -9,9 +9,7 @@ import java.util.Optional;
 
 @Repository
 public interface MeetingRepository extends JpaRepository<MeetingEntity, String> {
-    Optional<MeetingEntity> findByMeetingCode(String meetingCode);
-
-    List<MeetingEntity> findAllByHostIdOrderByCreatedAtDesc(String hostId);
-
     boolean existsByMeetingCode(String meetingCode);
+    Optional<MeetingEntity> findByMeetingCode(String meetingCode);
+    List<MeetingEntity> findAllByHostIdOrderByStartTimeAsc(String hostId);
 }

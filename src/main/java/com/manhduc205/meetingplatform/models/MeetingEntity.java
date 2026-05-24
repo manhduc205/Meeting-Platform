@@ -4,7 +4,7 @@ import com.manhduc205.meetingplatform.enums.MeetingStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -12,7 +12,10 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "meetings")
+@Table(name = "meetings", indexes = {
+        @Index(name = "idx_meeting_code", columnList = "meeting_code"),
+        @Index(name = "idx_host_id", columnList = "host_id")
+})
 @Builder
 public class MeetingEntity {
     @Id
@@ -35,10 +38,13 @@ public class MeetingEntity {
     private String description;
 
     @Column(name = "start_time")
-    private LocalDateTime startTime;
+    private Instant startTime;
 
     @Column(name = "end_time")
-    private LocalDateTime endTime;
+    private Instant endTime;
+
+    @Column(name = "google_event_id")
+    private String googleEventId;
 
     @Column(name = "is_locked")
     @Builder.Default
@@ -57,13 +63,13 @@ public class MeetingEntity {
     private Boolean isWaitingRoomEnabled = true;
 
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @PrePersist
     protected void onCreate() {
         if (this.id == null) {
             this.id = UUID.randomUUID().toString();
         }
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = Instant.now();
     }
 }
