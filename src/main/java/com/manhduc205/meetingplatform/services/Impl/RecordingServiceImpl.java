@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.manhduc205.meetingplatform.enums.RecordingStatus;
 import com.manhduc205.meetingplatform.models.MeetingEntity;
 import com.manhduc205.meetingplatform.models.RecordingEntity;
+import com.manhduc205.meetingplatform.models.UserEntity;
 import com.manhduc205.meetingplatform.models.dtos.response.RecordingResponse;
 import com.manhduc205.meetingplatform.repositories.MeetingRepository;
 import com.manhduc205.meetingplatform.repositories.RecordingRepository;
+import com.manhduc205.meetingplatform.repositories.UserRepository;
 import com.manhduc205.meetingplatform.services.RecordingService;
 import com.manhduc205.meetingplatform.utils.UserContext;
 import io.livekit.server.EgressServiceClient;
@@ -18,7 +20,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -31,7 +35,7 @@ public class RecordingServiceImpl implements RecordingService {
     private final MeetingRepository meetingRepository;
     private final ObjectMapper objectMapper;
     private final EgressServiceClient egressServiceClient;
-
+    private final UserRepository userRepository;
     @Value("${app.minio.access-key}") private String minioAccessKey;
     @Value("${app.minio.secret-key}") private String minioSecretKey;
     @Value("${app.minio.endpoint}") private String minioEndpoint;
@@ -57,16 +61,8 @@ public class RecordingServiceImpl implements RecordingService {
                     .setFilepath(filename)
                     .setS3(s3Output)
                     .build();
-
-            // 🟢 GIẢI PHÁP CHẤT LƯỢNG CAO: Định nghĩa thông số mã hóa phần cứng tốt nhất
-            // Ép cấu hình lên H264_1080P_30FPS giúp chữ nghĩa nét căng, triệt tiêu vỡ hạt
-            // 🟢 FIX CHÍ MẠNG: Đổi H264_1080P_30FPS thành H264_1080P30 chuẩn mã nguồn LiveKit 0.8.2
             EncodingOptionsPreset preset = EncodingOptionsPreset.H264_1080P_30;
 
-            // 🎯 GỌI HÀM OVERLOAD ĐẦY ĐỦ CỦA BẢN 0.8.2:
-            // Signature: startRoomCompositeEgress(room, fileOutput, layout, preset)
-            // Việc truyền preset H264_1080P_30FPS sẽ buộc trình duyệt ngầm mở độ phân giải lớn,
-            // tự động tối ưu hóa lại tỷ lệ co giãn của layout "sidebar" để khít khung hình, giảm dải đen thừa.
             var call = egressServiceClient.startRoomCompositeEgress(
                     meetingCode,
                     fileOutput,
@@ -120,10 +116,72 @@ public class RecordingServiceImpl implements RecordingService {
 
     @Override
     public List<RecordingResponse> getMeetingRecordings(String meetingCode) {
-        return recordingRepository.findAllByMeetingCodeOrderByCreatedAtDesc(meetingCode)
-                .stream()
+        String currentUserId = UserContext.getUserId();
+
+        meetingRepository.findByMeetingCode(meetingCode)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cuộc họp"));
+
+        List<RecordingEntity> accessibleRecordings = recordingRepository
+                .findAccessibleRecordingsByMeetingCode(currentUserId, meetingCode);
+
+        return accessibleRecordings.stream()
                 .map(this::mapToResponse)
-                .collect(Collectors.toList());
+                .toList();
+    }
+    @Override
+    public List<RecordingResponse> getAllAccessibleRecordingsForCurrentUser() {
+        String currentUserId = UserContext.getUserId();
+
+        // 1. Chọc DB lần 1: Quét toàn bộ video hợp lệ của User
+        List<RecordingEntity> accessibleRecordings = recordingRepository
+                .findAllAccessibleRecordings(currentUserId);
+
+        if (accessibleRecordings.isEmpty()) return Collections.emptyList();
+
+        // 2. Thuật toán O(1) tối ưu Loop: Gom sạch meeting_code để query thông tin phòng họp 1 lần
+        List<String> meetingCodes = accessibleRecordings.stream()
+                .map(RecordingEntity::getMeetingCode)
+                .distinct()
+                .toList();
+
+        List<MeetingEntity> meetings = meetingRepository.findAllByMeetingCodeIn(meetingCodes);
+        Map<String, MeetingEntity> meetingMap = meetings.stream()
+                .collect(Collectors.toMap(MeetingEntity::getMeetingCode, m -> m));
+
+        List<String> hostIds = meetings.stream().map(MeetingEntity::getHostId).distinct().toList();
+        List<UserEntity> hosts = userRepository.findAllById(hostIds);
+        Map<String, UserEntity> hostMap = hosts.stream()
+                .collect(Collectors.toMap(UserEntity::getId, h -> h));
+
+        return accessibleRecordings.stream()
+                .map(recording -> {
+                    MeetingEntity meeting = meetingMap.get(recording.getMeetingCode());
+                    UserEntity host = (meeting != null) ? hostMap.get(meeting.getHostId()) : null;
+
+                    String meetingTitle = (meeting != null && meeting.getTitle() != null) ? meeting.getTitle() : "Cuộc họp #" + recording.getMeetingCode();
+                    String displayName = meetingTitle + " - Bản ghi ngày " +
+                            recording.getCreatedAt().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+
+                    // Xử lý thông tin Host thật từ UserRepository
+                    String hostName = (host != null && host.getFullName() != null) ? host.getFullName() : "Thành viên UTT";
+                    String hostAvatar = (host != null && host.getAvatarUrl() != null) ? host.getAvatarUrl()
+                            : "https://ui-avatars.com/api/?name=" + hostName.replace(" ", "+");
+
+                    return RecordingResponse.builder()
+                            .egressId(recording.getEgressId())
+                            .meetingCode(recording.getMeetingCode())
+                            .recordingName(displayName)
+                            .hostId(meeting != null ? meeting.getHostId() : null)
+                            .hostName(hostName)
+                            .hostAvatar(hostAvatar)
+                            .status(recording.getStatus().name())
+                            .visibility(recording.getVisibility() != null ? recording.getVisibility().name() : "MEETING_MEMBERS") // 🟢 Trả về quyền để Angular hiện icon khóa/mở
+                            .fileUrl(recording.getFileUrl())
+                            .duration(recording.getDuration())
+                            .createdAt(recording.getCreatedAt())
+                            .build();
+                })
+                .toList();
     }
 
     @Override

@@ -4,6 +4,7 @@ import com.manhduc205.meetingplatform.models.dtos.request.JoinMeetingRequest;
 import com.manhduc205.meetingplatform.models.dtos.request.MeetingCreateRequest;
 import com.manhduc205.meetingplatform.models.dtos.response.JoinMeetingResponse;
 import com.manhduc205.meetingplatform.models.dtos.response.MeetingResponse;
+import com.manhduc205.meetingplatform.models.dtos.response.ParticipantAttendanceResponse;
 import com.manhduc205.meetingplatform.services.MeetingService;
 import com.manhduc205.meetingplatform.services.MeetingParticipantService;
 import lombok.RequiredArgsConstructor;
@@ -54,5 +55,9 @@ public class MeetingController {
             @PathVariable String meetingCode,
             @RequestBody JoinMeetingRequest request) {
         return ResponseEntity.ok(participantService.joinMeeting(meetingCode, request.getMeetingPassword()));
+    }
+    @GetMapping("/{meetingCode}/attendance")
+    public ResponseEntity<List<ParticipantAttendanceResponse>> getMeetingAttendance(@PathVariable String meetingCode) {
+        return ResponseEntity.ok(participantService.getMeetingAttendanceHistory(meetingCode));
     }
 }

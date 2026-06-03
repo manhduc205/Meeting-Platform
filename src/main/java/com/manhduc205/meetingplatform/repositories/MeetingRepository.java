@@ -12,4 +12,5 @@ public interface MeetingRepository extends JpaRepository<MeetingEntity, String> 
     boolean existsByMeetingCode(String meetingCode);
     Optional<MeetingEntity> findByMeetingCode(String meetingCode);
     List<MeetingEntity> findAllByHostIdOrderByStartTimeAsc(String hostId);
+    List<MeetingEntity> findAllByMeetingCodeIn(List<String> meetingCodes);
 }

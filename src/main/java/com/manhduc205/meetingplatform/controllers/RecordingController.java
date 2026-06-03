@@ -8,28 +8,30 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/meetings/{meetingCode}/recordings")
+@RequestMapping("/api/v1/recordings")
 @RequiredArgsConstructor
 public class RecordingController {
 
     private final RecordingService recordingService;
 
-    // Host gọi API này để bắt đầu
-    @PostMapping("/start")
+    @GetMapping
+    public ResponseEntity<List<RecordingResponse>> getAllMyRecordings() {
+        return ResponseEntity.ok(recordingService.getAllAccessibleRecordingsForCurrentUser());
+    }
+
+    @GetMapping("/meeting/{meetingCode}")
+    public ResponseEntity<List<RecordingResponse>> getRecordingsByMeeting(@PathVariable String meetingCode) {
+        return ResponseEntity.ok(recordingService.getMeetingRecordings(meetingCode));
+    }
+
+    @PostMapping("/meeting/{meetingCode}/start")
     public ResponseEntity<RecordingResponse> start(@PathVariable String meetingCode) {
         return ResponseEntity.ok(recordingService.startRecording(meetingCode));
     }
 
-    // Host gọi API này để dừng
-    @PostMapping("/{egressId}/stop")
-    public ResponseEntity<Void> stop(@PathVariable String meetingCode, @PathVariable String egressId) {
+    @PostMapping("/meeting/{meetingCode}/stop")
+    public ResponseEntity<Void> stop(@PathVariable String meetingCode, @RequestParam String egressId) {
         recordingService.stopRecording(meetingCode, egressId);
         return ResponseEntity.ok().build();
-    }
-
-    // Tất cả người tham gia đều có thể xem danh sách bản ghi
-    @GetMapping
-    public ResponseEntity<List<RecordingResponse>> getRecordings(@PathVariable String meetingCode) {
-        return ResponseEntity.ok(recordingService.getMeetingRecordings(meetingCode));
     }
 }

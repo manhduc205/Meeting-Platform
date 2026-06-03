@@ -27,11 +27,18 @@ public class RecordingEntity {
     @Column(name = "status", nullable = false)
     private RecordingStatus status;
 
+    @Column(name = "thumbnail_url", columnDefinition = "TEXT")
+    private String thumbnailUrl;
+
     @Column(name = "file_url", columnDefinition = "TEXT")
     private String fileUrl;
 
     @Column(name = "duration")
     private Long duration; // Độ dài video (giây)
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "visibility")
+    private RecordingStatus visibility;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

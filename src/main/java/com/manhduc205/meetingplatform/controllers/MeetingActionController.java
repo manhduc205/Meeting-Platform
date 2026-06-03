@@ -13,7 +13,6 @@ public class MeetingActionController {
 
     private final MeetingParticipantService participantService;
 
-    // Giơ / Hạ tay (Kích hoạt Delta Broadcast)
     @PostMapping("/raise-hand")
     public ResponseEntity<Void> toggleRaiseHand(
             @PathVariable String meetingCode,

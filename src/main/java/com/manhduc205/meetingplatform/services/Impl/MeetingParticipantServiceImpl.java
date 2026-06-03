@@ -1,26 +1,30 @@
 package com.manhduc205.meetingplatform.services.Impl;
 
+import com.manhduc205.meetingplatform.enums.ParticipantRole;
+import com.manhduc205.meetingplatform.models.MeetingParticipantEntity;
 import com.manhduc205.meetingplatform.models.dtos.mappers.ParticipantMapper;
-import com.manhduc205.meetingplatform.models.dtos.response.ActiveParticipantsResponse;
-import com.manhduc205.meetingplatform.models.dtos.response.JoinMeetingResponse;
-import com.manhduc205.meetingplatform.models.dtos.response.ParticipantDto;
-import com.manhduc205.meetingplatform.models.dtos.response.RaisedHandResponse;
+import com.manhduc205.meetingplatform.models.dtos.response.*;
 import com.manhduc205.meetingplatform.enums.ParticipantStatus;
 import com.manhduc205.meetingplatform.enums.WaitingRoomAction;
 import com.manhduc205.meetingplatform.models.MeetingEntity;
 import com.manhduc205.meetingplatform.models.UserEntity;
+import com.manhduc205.meetingplatform.repositories.MeetingParticipantRepository;
 import com.manhduc205.meetingplatform.repositories.MeetingRepository;
 import com.manhduc205.meetingplatform.repositories.UserRepository;
+import com.manhduc205.meetingplatform.services.MeetingParticipantJoinRecorder;
 import com.manhduc205.meetingplatform.services.MeetingParticipantService;
 import com.manhduc205.meetingplatform.services.MeetingPresenceService;
 import com.manhduc205.meetingplatform.utils.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -32,6 +36,8 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
     private final MeetingRepository meetingRepository;
     private final UserRepository userRepository;
+    private final MeetingParticipantRepository participantRepository;
+    private final MeetingParticipantJoinRecorder joinRecorder;
     private final ParticipantMapper participantMapper;
     private final MeetingPresenceService presenceService;
     private final RedisTemplate<String, Object> redisTemplate;
@@ -114,6 +120,40 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 🟢 THUẬT TOÁN 3: LẤY DANH SÁCH (STREAM API)
+     * API chuyên dụng dành cho Host vào xem thống kê.
+     */
+    @Override
+    public List<ParticipantAttendanceResponse> getMeetingAttendanceHistory(String meetingCode) {
+        String currentUserId = UserContext.getUserId();
+
+        MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode)
+                .orElseThrow(() -> new IllegalArgumentException("Cuộc họp không tồn tại"));
+
+        // Bảo mật phân quyền cấp Object: Chỉ Host mới được xem
+        if (!meeting.getHostId().equals(currentUserId)) {
+            throw new SecurityException("Truy cập bị từ chối. Chỉ chủ phòng mới có quyền xem Sổ điểm danh.");
+        }
+
+        List<MeetingParticipantEntity> participants = participantRepository.findAllByMeetingIdOrderByJoinedOnceAtAsc(meeting.getId());
+
+        // Sử dụng Stream API để ánh xạ DTO
+        return participants.stream().map(p -> {
+            // Mock dữ liệu Profile (Sau này em gọi hàm UserService/Keycloak để đắp tên thật vào đây)
+            String mockedName = "ID: " + p.getUserId().substring(0, Math.min(8, p.getUserId().length()));
+            String mockedAvatar = "https://ui-avatars.com/api/?name=User&background=random";
+
+            return ParticipantAttendanceResponse.builder()
+                    .userId(p.getUserId())
+                    .fullName(mockedName)
+                    .avatar(mockedAvatar)
+                    .role(p.getRole())
+                    .joinedAt(p.getJoinedOnceAt())
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
     @Override
     @Transactional(readOnly = true)
     public List<ParticipantDto> getSidebarParticipants(String meetingCode) {
@@ -194,6 +234,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
         if (meeting.getHostId().equals(internalUserId)) {
             addActiveParticipant(meetingCode, internalUserId);
+            joinRecorder.recordParticipantJoinAsync(meeting.getId(), internalUserId, ParticipantRole.HOST);
             return JoinMeetingResponse.builder().meetingCode(meetingCode).userId(internalUserId)
                     .status(ParticipantStatus.APPROVED.name()).build();
         }
@@ -203,6 +244,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
         // Nếu đã lọt vào danh sách ACTIVE (phòng không có phòng chờ) -> Trả về luôn
         if (redisTemplate.opsForZSet().score(activeKey, internalUserId) != null) {
+            joinRecorder.recordParticipantJoinAsync(meeting.getId(), internalUserId, ParticipantRole.PARTICIPANT);
             return JoinMeetingResponse.builder().meetingCode(meetingCode).userId(internalUserId)
                     .status(ParticipantStatus.APPROVED.name()).message("You are already in the meeting!").build();
         }
@@ -225,6 +267,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         // 3. Logic phòng chờ
         if (meeting.getIsWaitingRoomEnabled() != null && !meeting.getIsWaitingRoomEnabled()) {
             addActiveParticipant(meetingCode, internalUserId);
+            joinRecorder.recordParticipantJoinAsync(meeting.getId(), internalUserId, ParticipantRole.PARTICIPANT);
             return JoinMeetingResponse.builder().meetingCode(meetingCode).userId(internalUserId)
                     .status(ParticipantStatus.APPROVED.name()).message("Joined successfully!").build();
         }
@@ -288,10 +331,6 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
             }
         }
     }
-
-    // ==============================================================================
-    // 3. NGHIỆP VỤ GIƠ TAY (RAISED HANDS)
-    // ==============================================================================
 
     @Override
     public void toggleRaiseHand(String meetingCode, boolean isRaising) {
