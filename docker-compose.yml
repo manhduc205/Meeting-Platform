@@ -58,7 +58,6 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:23.0
     container_name: meeting-keycloak
-    # 🔴 Bắt buộc dùng lệnh start-dev kèm 2 cờ bỏ qua mã hóa nghiêm ngặt ở local
     command: start-dev --http-enabled=true --hostname-strict-https=false
     restart: always
     environment:

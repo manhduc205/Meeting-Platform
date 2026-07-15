@@ -11,8 +11,7 @@ import lombok.Data;
 @Builder
 public class ParticipantDto {
     private String id;           // User ID
-    private String firstName;    // Tên
-    private String lastName;     // Họ
+    private String fullName;
     private String avatarUrl;    // Avatar
     private String status;       // WAITING, APPROVED, ACTIVE
     private Boolean isMe;

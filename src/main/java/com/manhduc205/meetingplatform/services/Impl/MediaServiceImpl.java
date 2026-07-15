@@ -20,7 +20,6 @@ public class MediaServiceImpl implements MediaService {
     private final MediaTokenService mediaTokenService;
     private final StringRedisTemplate stringRedisTemplate;
 
-    // 🔥 Inject thêm Repository để lấy thông tin Host
     private final MeetingRepository meetingRepository;
 
     @Value("${app.livekit.host}")
@@ -40,25 +39,23 @@ public class MediaServiceImpl implements MediaService {
     public MediaJoinResponse prepareMediaConnection(String meetingCode) {
         String internalUserId = UserContext.getUserId();
 
-        // 1. Tìm thông tin phòng để xác định ai là Host
         MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cuộc họp"));
 
         boolean isHost = meeting.getHostId().equals(internalUserId);
 
-        // 2. 🛡️ ZERO-TRUST CHECK: ĐẶC QUYỀN CỦA HOST
         if (!isHost) {
             // Nếu KHÔNG PHẢI Host -> Phải qua cửa kiểm duyệt Redis
             String activeKey = ACTIVE_PARTICIPANTS_PREFIX + meetingCode;
             Double score = stringRedisTemplate.opsForZSet().score(activeKey, internalUserId);
 
             if (score == null) {
-                log.error("🚨 CẢNH BÁO: Guest [{}] cố lấy Token Media phòng [{}] khi chưa được duyệt!", internalUserId, meetingCode);
+                log.error("CẢNH BÁO: Guest [{}] cố lấy Token Media phòng [{}] khi chưa được duyệt!", internalUserId, meetingCode);
                 throw new SecurityException("Bạn chưa được Host duyệt vào phòng!");
             }
         } else {
             // Nếu LÀ Host -> Mời sếp vào
-            log.info("👑 Host [{}] đang khởi tạo luồng Media cho phòng [{}]", internalUserId, meetingCode);
+            log.info("Host [{}] đang khởi tạo luồng Media cho phòng [{}]", internalUserId, meetingCode);
         }
 
         // 3. Đóng gói cấu hình ICE (STUN/TURN)

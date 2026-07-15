@@ -321,15 +321,38 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
         long currentTime = System.currentTimeMillis();
         for (String targetId : idsToProcess) {
+            // 1. Xóa User khỏi danh sách chờ trên Redis
             redisTemplate.opsForZSet().remove(waitingKey, targetId);
+
+            String statusStr = (action == WaitingRoomAction.APPROVE) ? "APPROVED" : "REJECTED";
+
             if (action == WaitingRoomAction.APPROVE) {
+                // 2. CẬP NHẬT SỐ LƯỢNG: Nạp ngay User vào danh sách ACTIVE trên Redis
                 redisTemplate.opsForZSet().add(activeKey, targetId, currentTime++);
+                redisTemplate.expire(activeKey, ACTIVE_PARTICIPANTS_TTL_HOURS, TimeUnit.HOURS);
                 presenceService.addOnlineUser(meetingCode, targetId);
-                broadcastWaitingRoomStatus(meetingCode, targetId, "APPROVED");
-            } else {
-                broadcastWaitingRoomStatus(meetingCode, targetId, "REJECTED");
             }
+
+            // 3. ĐỒNG BỘ REAL-TIME CHO GUEST (Người đang đợi ngoài sảnh)
+            broadcastWaitingRoomStatus(meetingCode, targetId, statusStr);
+
+            // 4. ĐỒNG BỘ REAL-TIME CHO HOST (Để UI của Host tự xóa dòng User này đi và cập nhật tổng số người)
+            messagingTemplate.convertAndSend(
+                    "/topic/meeting." + meetingCode + ".host-notifications",
+                    Map.of(
+                            "type", "WAITING_ROOM_UPDATE",
+                            "action", action.name(),
+                            "userId", targetId
+                    )
+            );
         }
+
+        messagingTemplate.convertAndSend(
+                "/topic/meeting." + meetingCode + ".participants-changed",
+                Map.of("type", "REFRESH_PARTICIPANTS")
+        );
+
+        log.info("🎯 Đã duyệt phòng chờ cuộc họp [{}], Số lượng xử lý: {}", meetingCode, idsToProcess.size());
     }
 
     @Override
@@ -441,7 +464,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         int displayCount = Math.min(2, participants.size());
         for (int i = 0; i < displayCount; i++) {
             if (i > 0) nameList.append(", ");
-            nameList.append(participants.get(i).getFirstName() != null ? participants.get(i).getFirstName() : "Someone");
+            nameList.append(participants.get(i).getFullName() != null ? participants.get(i).getFullName() : "Someone");
         }
         int othersCount = totalCount - displayCount;
         if (othersCount > 0) return String.format("%s, and %d others are already here", nameList, othersCount);

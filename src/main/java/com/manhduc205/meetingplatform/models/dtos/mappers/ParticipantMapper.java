@@ -13,9 +13,8 @@ import org.mapstruct.Mapping;
 public interface ParticipantMapper {
 
     @Mapping(source = "id", target = "id")
-    @Mapping(source = "fullName", target = "firstName")  // Tạm sử dụng fullName làm firstName
+    @Mapping(source = "fullName", target = "fullName")  // Tạm sử dụng fullName làm firstName
     @Mapping(source = "avatarUrl", target = "avatarUrl")
-    @Mapping(target = "lastName", ignore = true)  // Có thể extend UserEntity nếu cần
     @Mapping(target = "status", ignore = true)     // Set status riêng từ Redis/Database
     ParticipantDto toParticipantDto(UserEntity userEntity);
 }
