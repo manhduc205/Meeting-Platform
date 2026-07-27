@@ -56,6 +56,13 @@ public class MeetingController {
             @RequestBody JoinMeetingRequest request) {
         return ResponseEntity.ok(participantService.joinMeeting(meetingCode, request.getMeetingPassword()));
     }
+
+    @PostMapping("/{meetingCode}/leave")
+    public ResponseEntity<Void> leaveMeeting(@PathVariable String meetingCode) {
+        participantService.leaveMeeting(meetingCode);
+        return ResponseEntity.ok().build();
+    }
+
     @GetMapping("/{meetingCode}/attendance")
     public ResponseEntity<List<ParticipantAttendanceResponse>> getMeetingAttendance(@PathVariable String meetingCode) {
         return ResponseEntity.ok(participantService.getMeetingAttendanceHistory(meetingCode));

@@ -1,7 +1,10 @@
 package com.manhduc205.meetingplatform.services.Impl;
 
 import com.manhduc205.meetingplatform.enums.ParticipantRole;
+import com.manhduc205.meetingplatform.enums.MessageCategory;
+import com.manhduc205.meetingplatform.enums.PresenceType;
 import com.manhduc205.meetingplatform.models.MeetingParticipantEntity;
+import com.manhduc205.meetingplatform.models.dtos.request.SignalingMessage;
 import com.manhduc205.meetingplatform.models.dtos.mappers.ParticipantMapper;
 import com.manhduc205.meetingplatform.models.dtos.response.*;
 import com.manhduc205.meetingplatform.enums.ParticipantStatus;
@@ -17,8 +20,11 @@ import com.manhduc205.meetingplatform.services.MeetingPresenceService;
 import com.manhduc205.meetingplatform.utils.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -277,6 +283,57 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
         return JoinMeetingResponse.builder().meetingCode(meetingCode).userId(internalUserId)
                 .status(ParticipantStatus.WAITING.name()).message("Waiting for host approval.").build();
+    }
+
+
+    @Override
+    public void leaveMeeting(String meetingCode) {
+        String internalUserId = UserContext.getUserId();
+        if (!meetingRepository.existsByMeetingCode(meetingCode)) {
+            throw new IllegalArgumentException("Cuộc họp không tồn tại: " + meetingCode);
+        }
+
+        List<Object> pipelineResults = redisTemplate.executePipelined(new SessionCallback<Object>() {
+            @Override
+            public Object execute(RedisOperations operations) throws DataAccessException {
+                operations.opsForZSet().remove(ACTIVE_PARTICIPANTS_PREFIX + meetingCode, internalUserId);
+                operations.opsForZSet().remove(WAITING_PARTICIPANTS_PREFIX + meetingCode, internalUserId);
+                operations.delete(PENDING_KNOCK_PREFIX + meetingCode + ":" + internalUserId);
+                operations.opsForZSet().remove(RAISED_HANDS_PREFIX + meetingCode, internalUserId);
+                return null;
+            }
+        });
+        presenceService.removeOnlineUser(meetingCode, internalUserId);
+
+        Long removedRaisedHand = (Long) pipelineResults.get(3);
+
+        if (removedRaisedHand != null && removedRaisedHand > 0) {
+            messagingTemplate.convertAndSend(
+                    "/topic/meeting." + meetingCode + ".raised-hands",
+                    Map.of("action", "LOWER", "userId", internalUserId)
+            );
+        }
+
+        // 3. Broadcast sự kiện qua WebSocket (Async/Fire-and-forget)
+        messagingTemplate.convertAndSend(
+                "/topic/meeting." + meetingCode + ".participants-changed",
+                Map.of("type", "REFRESH_PARTICIPANTS", "userId", internalUserId)
+        );
+
+        messagingTemplate.convertAndSend(
+                "/topic/meeting." + meetingCode,
+                SignalingMessage.builder()
+                        .category(MessageCategory.PRESENCE)
+                        .type(PresenceType.LEAVE.name())
+                        .senderId(internalUserId)
+                        .meetingCode(meetingCode)
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+
+        // TODO: (Nghiệp vụ) Cập nhật mốc thời gian leftAt vào bảng Điểm danh
+
+        log.info("User [{}] left meeting [{}] successfully", internalUserId, meetingCode);
     }
 
     @Override

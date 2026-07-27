@@ -12,6 +12,7 @@ public interface MeetingParticipantService {
     List<ParticipantDto> getSidebarParticipants(String meetingCode); // Cho Sidebar (Có Host, Hand)
     List<ParticipantAttendanceResponse> getMeetingAttendanceHistory(String meetingCode);
     JoinMeetingResponse joinMeeting(String meetingCode, String meetingPassword);
+    void leaveMeeting(String meetingCode);
     List<ParticipantDto> getWaitingParticipants(String meetingCode);
     void processWaitingParticipants(String meetingCode, List<String> userIds, WaitingRoomAction action);
 

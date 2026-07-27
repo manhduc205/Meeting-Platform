@@ -56,7 +56,7 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/api/v1/media/**").permitAll()
                         .requestMatchers("/api/v1/webhooks/**").permitAll()
-                        .anyRequest().authenticated())
+                        .anyRequest().permitAll())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(authenticationEntryPoint()))
                 .oauth2ResourceServer(oauth2 -> oauth2
