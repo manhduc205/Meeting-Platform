@@ -13,6 +13,7 @@ public interface MeetingParticipantService {
     List<ParticipantAttendanceResponse> getMeetingAttendanceHistory(String meetingCode);
     JoinMeetingResponse joinMeeting(String meetingCode, String meetingPassword);
     void leaveMeeting(String meetingCode);
+    void removeParticipantByHost(String meetingCode, String userId);
     List<ParticipantDto> getWaitingParticipants(String meetingCode);
     void processWaitingParticipants(String meetingCode, List<String> userIds, WaitingRoomAction action);
 

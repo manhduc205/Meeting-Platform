@@ -9,6 +9,8 @@ import com.manhduc205.meetingplatform.repositories.MeetingRepository;
 import com.manhduc205.meetingplatform.services.MeetingService;
 import com.manhduc205.meetingplatform.services.RecordingService;
 import com.manhduc205.meetingplatform.utils.UserContext;
+import io.livekit.server.RoomServiceClient;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.io.IOException;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +30,8 @@ public class MeetingServiceImpl implements MeetingService {
     private final MeetingRepository meetingRepository;
     private final MeetingMapper meetingMapper;
     private final RecordingService recordingService;
+    private final RoomServiceClient roomServiceClient;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Override
     @Transactional
@@ -96,6 +101,19 @@ public class MeetingServiceImpl implements MeetingService {
         meeting.setEndTime(Instant.now());
 
         MeetingEntity saved = meetingRepository.save(meeting);
+        // Closing the LiveKit room disconnects every media client. The STOMP event
+        // closes the rest of the meeting UI (chat, sidebar, controls) immediately.
+        closeLiveKitRoom(meetingCode);
+        messagingTemplate.convertAndSend(
+                "/topic/meeting." + meetingCode,
+                java.util.Map.of(
+                        "category", "ACTION",
+                        "type", "MEETING_ENDED",
+                        "meetingCode", meetingCode,
+                        "senderId", internalUserId,
+                        "timestamp", Instant.now().toString()
+                )
+        );
         log.info("ServiceImpl: Cuộc họp [{}] đã được chốt sổ bởi host [{}]", meetingCode, internalUserId);
         return meetingMapper.ToMeetingResponse(saved);
     }
@@ -169,5 +187,18 @@ public class MeetingServiceImpl implements MeetingService {
             }
         }
         return sb.toString();
+    }
+
+    private void closeLiveKitRoom(String meetingCode) {
+        try {
+            retrofit2.Response<Void> response = roomServiceClient.deleteRoom(meetingCode).execute();
+            if (!response.isSuccessful() && response.code() != 404) {
+                log.warn("Không thể đóng LiveKit room {}: HTTP {}", meetingCode, response.code());
+            }
+        } catch (IOException e) {
+            // The database state and UI broadcast remain authoritative. Log this for
+            // operator retry rather than leaving the meeting active in the application.
+            log.error("Không kết nối được LiveKit để đóng room {}", meetingCode, e);
+        }
     }
 }

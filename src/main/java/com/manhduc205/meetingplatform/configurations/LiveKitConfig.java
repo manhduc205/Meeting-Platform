@@ -1,4 +1,4 @@
-package com.manhduc205.meetingplatform.config;
+package com.manhduc205.meetingplatform.configurations;
 
 import io.livekit.server.EgressServiceClient;
 import io.livekit.server.RoomServiceClient;

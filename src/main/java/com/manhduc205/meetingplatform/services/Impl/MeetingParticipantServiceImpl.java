@@ -1,6 +1,7 @@
 package com.manhduc205.meetingplatform.services.Impl;
 
 import com.manhduc205.meetingplatform.enums.ParticipantRole;
+import com.manhduc205.meetingplatform.enums.MeetingStatus;
 import com.manhduc205.meetingplatform.enums.MessageCategory;
 import com.manhduc205.meetingplatform.enums.PresenceType;
 import com.manhduc205.meetingplatform.models.MeetingParticipantEntity;
@@ -24,6 +25,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
@@ -47,12 +49,14 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
     private final ParticipantMapper participantMapper;
     private final MeetingPresenceService presenceService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
     private final SimpMessagingTemplate messagingTemplate;
 
     private static final String ACTIVE_PARTICIPANTS_PREFIX = "active:participants:";
     private static final String WAITING_PARTICIPANTS_PREFIX = "waiting:participants:";
     private static final String PENDING_KNOCK_PREFIX = "pending:knock:";
     private static final String RAISED_HANDS_PREFIX = "meeting:raised_hands:";
+    private static final String KICKED_PARTICIPANT_PREFIX = "meeting:kicked:";
     private static final String WAITING_ROOM_TOPIC_SUFFIX = ".waiting-room";
 
     private static final int DISPLAY_LIMIT = 10;
@@ -69,7 +73,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
         String activeKey = ACTIVE_PARTICIPANTS_PREFIX + meetingCode;
         // Lấy nhiều hơn DISPLAY_LIMIT một chút để phòng trường hợp có chính mình trong đó
-        Set<Object> activeUserIds = redisTemplate.opsForZSet().range(activeKey, 0, DISPLAY_LIMIT);
+        Set<String> activeUserIds = stringRedisTemplate.opsForZSet().range(activeKey, 0, DISPLAY_LIMIT);
 
         if (activeUserIds == null || activeUserIds.isEmpty()) {
             return ActiveParticipantsResponse.builder()
@@ -102,7 +106,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
             otherParticipants = otherParticipants.subList(0, DISPLAY_LIMIT - 1);
         }
 
-        Long totalCount = redisTemplate.opsForZSet().size(activeKey);
+        Long totalCount = stringRedisTemplate.opsForZSet().size(activeKey);
 
         return ActiveParticipantsResponse.builder()
                 .totalCount(totalCount != null ? totalCount.intValue() : 0)
@@ -116,7 +120,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
     @Transactional(readOnly = true)
     public List<ParticipantDto> getAllParticipants(String meetingCode) {
         String activeKey = ACTIVE_PARTICIPANTS_PREFIX + meetingCode;
-        Set<Object> activeUserIds = redisTemplate.opsForZSet().range(activeKey, 0, -1);
+        Set<String> activeUserIds = stringRedisTemplate.opsForZSet().range(activeKey, 0, -1);
         if (activeUserIds == null || activeUserIds.isEmpty()) return Collections.emptyList();
 
         List<String> userIdList = activeUserIds.stream().map(Object::toString).toList();
@@ -169,7 +173,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
         // 1. Lấy toàn bộ ID từ Redis
         String activeKey = ACTIVE_PARTICIPANTS_PREFIX + meetingCode;
-        Set<Object> activeUserIds = redisTemplate.opsForZSet().range(activeKey, 0, -1);
+        Set<String> activeUserIds = stringRedisTemplate.opsForZSet().range(activeKey, 0, -1);
         if (activeUserIds == null || activeUserIds.isEmpty()) return Collections.emptyList();
 
         // 2. Lấy danh sách giơ tay để gán status
@@ -238,6 +242,10 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode).orElseThrow();
         UserEntity user = userRepository.findById(internalUserId).orElseThrow();
 
+        if (MeetingStatus.ENDED.name().equals(meeting.getStatus())) {
+            throw new IllegalStateException("Cuộc họp đã kết thúc");
+        }
+
         if (meeting.getHostId().equals(internalUserId)) {
             addActiveParticipant(meetingCode, internalUserId);
             joinRecorder.recordParticipantJoinAsync(meeting.getId(), internalUserId, ParticipantRole.HOST);
@@ -245,11 +253,16 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
                     .status(ParticipantStatus.APPROVED.name()).build();
         }
 
+        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(
+                KICKED_PARTICIPANT_PREFIX + meetingCode + ":" + internalUserId))) {
+            throw new SecurityException("Bạn đã bị mời ra khỏi cuộc họp này");
+        }
+
         String activeKey = ACTIVE_PARTICIPANTS_PREFIX + meetingCode;
         String waitingKey = WAITING_PARTICIPANTS_PREFIX + meetingCode;
 
         // Nếu đã lọt vào danh sách ACTIVE (phòng không có phòng chờ) -> Trả về luôn
-        if (redisTemplate.opsForZSet().score(activeKey, internalUserId) != null) {
+        if (stringRedisTemplate.opsForZSet().score(activeKey, internalUserId) != null) {
             joinRecorder.recordParticipantJoinAsync(meeting.getId(), internalUserId, ParticipantRole.PARTICIPANT);
             return JoinMeetingResponse.builder().meetingCode(meetingCode).userId(internalUserId)
                     .status(ParticipantStatus.APPROVED.name()).message("You are already in the meeting!").build();
@@ -289,23 +302,34 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
     @Override
     public void leaveMeeting(String meetingCode) {
         String internalUserId = UserContext.getUserId();
+        removeParticipant(meetingCode, internalUserId);
+    }
+
+    @Override
+    public void removeParticipantByHost(String meetingCode, String userId) {
+        removeParticipant(meetingCode, userId);
+    }
+
+    private void removeParticipant(String meetingCode, String internalUserId) {
         if (!meetingRepository.existsByMeetingCode(meetingCode)) {
             throw new IllegalArgumentException("Cuộc họp không tồn tại: " + meetingCode);
         }
 
+        // Xóa khỏi active participants với StringRedisTemplate (đồng bộ serializer)
+        stringRedisTemplate.opsForZSet().remove(ACTIVE_PARTICIPANTS_PREFIX + meetingCode, internalUserId);
+
         List<Object> pipelineResults = redisTemplate.executePipelined(new SessionCallback<Object>() {
             @Override
             public Object execute(RedisOperations operations) throws DataAccessException {
-                operations.opsForZSet().remove(ACTIVE_PARTICIPANTS_PREFIX + meetingCode, internalUserId);
-                operations.opsForZSet().remove(WAITING_PARTICIPANTS_PREFIX + meetingCode, internalUserId);
-                operations.delete(PENDING_KNOCK_PREFIX + meetingCode + ":" + internalUserId);
-                operations.opsForZSet().remove(RAISED_HANDS_PREFIX + meetingCode, internalUserId);
+                operations.opsForZSet().remove(WAITING_PARTICIPANTS_PREFIX + meetingCode, internalUserId);  // index 0
+                operations.delete(PENDING_KNOCK_PREFIX + meetingCode + ":" + internalUserId);               // index 1
+                operations.opsForZSet().remove(RAISED_HANDS_PREFIX + meetingCode, internalUserId);         // index 2
                 return null;
             }
         });
         presenceService.removeOnlineUser(meetingCode, internalUserId);
 
-        Long removedRaisedHand = (Long) pipelineResults.get(3);
+        Long removedRaisedHand = (Long) pipelineResults.get(2);
 
         if (removedRaisedHand != null && removedRaisedHand > 0) {
             messagingTemplate.convertAndSend(
@@ -339,6 +363,9 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
     @Override
     @Transactional(readOnly = true)
     public List<ParticipantDto> getWaitingParticipants(String meetingCode) {
+        // This endpoint is also used by the frontend to render host controls.
+        // Never expose it to attendees: a successful response must mean host.
+        validateHostPrivilege(meetingCode);
         String waitingKey = WAITING_PARTICIPANTS_PREFIX + meetingCode;
         Set<Object> waitingIds = redisTemplate.opsForZSet().range(waitingKey, 0, -1);
         if (waitingIds == null || waitingIds.isEmpty()) return Collections.emptyList();
@@ -385,8 +412,8 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
             if (action == WaitingRoomAction.APPROVE) {
                 // 2. CẬP NHẬT SỐ LƯỢNG: Nạp ngay User vào danh sách ACTIVE trên Redis
-                redisTemplate.opsForZSet().add(activeKey, targetId, currentTime++);
-                redisTemplate.expire(activeKey, ACTIVE_PARTICIPANTS_TTL_HOURS, TimeUnit.HOURS);
+                stringRedisTemplate.opsForZSet().add(activeKey, targetId, currentTime++);
+                stringRedisTemplate.expire(activeKey, ACTIVE_PARTICIPANTS_TTL_HOURS, TimeUnit.HOURS);
                 presenceService.addOnlineUser(meetingCode, targetId);
             }
 
@@ -472,8 +499,8 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
     private void addActiveParticipant(String meetingCode, String userId) {
         String activeKey = ACTIVE_PARTICIPANTS_PREFIX + meetingCode;
-        redisTemplate.opsForZSet().add(activeKey, userId, System.currentTimeMillis());
-        redisTemplate.expire(activeKey, ACTIVE_PARTICIPANTS_TTL_HOURS, TimeUnit.HOURS);
+        stringRedisTemplate.opsForZSet().add(activeKey, userId, System.currentTimeMillis());
+        stringRedisTemplate.expire(activeKey, ACTIVE_PARTICIPANTS_TTL_HOURS, TimeUnit.HOURS);
         presenceService.addOnlineUser(meetingCode, userId);
     }
 

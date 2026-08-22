@@ -37,23 +37,27 @@ services:
           cpus: '1.0'
           memory: 1G
 
-  mongodb:
-    image: mongo:7.0
-    container_name: meeting-mongodb
+  backend:
+    build:
+      context: .
+    container_name: meeting-backend
     restart: always
+    env_file:
+      - .env
     environment:
-      MONGO_INITDB_DATABASE: meetingplatform_mongo
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/meetingplatform
+      REDIS_HOST: redis
+      LIVEKIT_HOST: http://livekit:7880
+      MINIO_ENDPOINT: http://minio:9000
     ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
+      - "8081:8081"
+    depends_on:
+      - postgres
+      - redis
+      - livekit
     networks:
       - meeting-network
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 1G # Giới hạn không cho Mongo ăn hết RAM cache
+
 
   keycloak:
     image: quay.io/keycloak/keycloak:23.0
@@ -84,7 +88,7 @@ services:
     ports:
       - "7880:7880"
       - "7881:7881"
-      - "50000-50010:50000-50010/udp"
+      - "50000-50100:50000-50100/udp"
     command:
       - --config
       - /etc/livekit.yaml
@@ -180,7 +184,5 @@ volumes:
     driver: local
   postgres_data:
     driver: local # Fix: Bổ sung driver bị thiếu
-  mongodb_data:
-    driver: local
   minio_data:
     driver: local

@@ -35,6 +35,7 @@ public class HostController {
             @RequestParam String command,
             @RequestParam(required = false) String targetId) {
         if ("MUTE_ALL".equals(command)) hostService.muteAll(meetingCode);
+        else if ("MUTE_PARTICIPANT".equals(command)) hostService.muteParticipant(meetingCode, targetId);
         else if ("KICK_PARTICIPANT".equals(command)) hostService.kickUser(meetingCode, targetId);
         else throw new IllegalArgumentException("Lệnh không được hỗ trợ: " + command);
         return ResponseEntity.ok().build();

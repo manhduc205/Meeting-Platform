@@ -12,6 +12,16 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+        @ExceptionHandler(IllegalArgumentException.class)
+        public ResponseEntity<?> handleIllegalArgument(IllegalArgumentException ex) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                        Map.of(
+                                "success", false,
+                                "message", ex.getMessage(),
+                                "errorCode", "BAD_REQUEST"
+                        ));
+        }
+
         @ExceptionHandler(RequestException.class)
         public ResponseEntity<?> handleRequestException(RequestException ex) {
                 return ResponseEntity.badRequest().body(
@@ -38,6 +48,14 @@ public class GlobalExceptionHandler {
                                 Map.of(
                                                 "success", false,
                                                 "message", "Bạn không có quyền thực hiện hành động này",
+                                                "errorCode", "FORBIDDEN"));
+        }
+        @ExceptionHandler(SecurityException.class)
+        public ResponseEntity<?> handleSecurityException(SecurityException ex) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                                Map.of(
+                                                "success", false,
+                                                "message", ex.getMessage(),
                                                 "errorCode", "FORBIDDEN"));
         }
 

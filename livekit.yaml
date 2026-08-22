@@ -12,8 +12,12 @@ redis:
 
 rtc:
   tcp_port: 7881
-  use_external_ip: false
+  port_range_start: 50000
+  port_range_end: 50100
+  # Required on a public VM behind Docker/NAT. It is also safe for local Docker
+  # testing because host candidates remain available.
+  use_external_ip: true
 webhook:
   api_key: livekit_api_key_2026
   urls:
-    - "http://host.docker.internal:8081/api/v1/webhooks/livekit/egress"
+    - "http://backend:8081/api/v1/webhooks/livekit/egress"

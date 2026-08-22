@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.security.Principal;
 
 @Controller
 @RequiredArgsConstructor
@@ -29,7 +30,13 @@ public class MeetingPrecenceController {
     private final HeartbeatService heartbeatService;
 
     @MessageMapping("/meeting.signal")
-    public void processSignaling(@Payload SignalingMessage message, SimpMessageHeaderAccessor headerAccessor) {
+    public void processSignaling(@Payload SignalingMessage message, SimpMessageHeaderAccessor headerAccessor, Principal principal) {
+        if (principal == null) {
+            throw new SecurityException("WebSocket chưa được xác thực");
+        }
+        // Never trust a client-supplied senderId. The authenticated STOMP principal is
+        // the internal user ID used by REST responses and LiveKit identities.
+        message.setSenderId(principal.getName());
         String roomTopic = "/topic/meeting." + message.getMeetingCode();
         message.setTimestamp(LocalDateTime.now());
 

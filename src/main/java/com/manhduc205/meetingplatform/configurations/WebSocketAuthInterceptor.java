@@ -1,6 +1,7 @@
 package com.manhduc205.meetingplatform.configurations;
 
 import com.manhduc205.meetingplatform.services.JwtService;
+import com.manhduc205.meetingplatform.services.UserIdCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
@@ -21,6 +22,7 @@ import java.util.Optional;
 // Lớp này sẽ được sử dụng để kiểm tra xác thực khi kết nối WebSocket, đảm bảo chỉ người dùng đã đăng nhập mới có thể tham gia cuộc họp qua WebSocket
 public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private final JwtService jwtService;
+    private final UserIdCacheService userIdCacheService;
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
@@ -31,7 +33,8 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                     .map(header -> header.substring(7))
                     .ifPresentOrElse(
                             token -> {
-                                String userId = jwtService.validateTokenAndGetUserId(token);
+                                String keycloakId = jwtService.validateTokenAndGetUserId(token);
+                                String userId = userIdCacheService.getOrResolveInternalId(keycloakId);
                                 // Xác thực thành công -> Gán User vào Session của WebSocket
                                 UsernamePasswordAuthenticationToken auth =
                                         new UsernamePasswordAuthenticationToken(userId, null, null);
