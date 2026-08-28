@@ -13,12 +13,20 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    # Set FLYWAY_BASELINE_ON_MIGRATE=true only once for an existing database.
+    # Fresh environments must run V1 and V2 normally.
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
+    baseline-version: 1
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -58,3 +66,11 @@ app:
     turn-url: ${TURN_URL:turn:localhost:3478}
     turn-username: ${TURN_USERNAME:ducit}
     turn-password: ${TURN_PASSWORD:ducpass123}
+  notifications:
+    outbox:
+      polling-enabled: ${OUTBOX_POLLING_ENABLED:true}
+      fixed-delay-ms: ${OUTBOX_POLLING_DELAY_MS:10000}
+    resend:
+      api-key: ${RESEND_API_KEY:}
+      from: ${RESEND_FROM_EMAIL:Meeting Platform <onboarding@resend.dev>}
+    public-base-url: ${PUBLIC_APP_URL:http://localhost:4200}

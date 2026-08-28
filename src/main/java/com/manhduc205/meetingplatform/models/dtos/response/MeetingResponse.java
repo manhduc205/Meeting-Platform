@@ -9,13 +9,14 @@ import java.time.Instant;
 public class MeetingResponse {
     private String id;
     private String meetingCode;
-    private String meetingPassword;
     private String title;
     private String description;
     private String hostId;
     private String status;
-    private Instant startTime;
-    private Instant endTime;
+    private Instant plannedStartTime;
+    private Instant plannedEndTime;
+    private Instant startedAt;
+    private Instant endedAt;
     private boolean isWaitingRoomEnabled;
     private Instant createdAt;
     private String googleEventId;

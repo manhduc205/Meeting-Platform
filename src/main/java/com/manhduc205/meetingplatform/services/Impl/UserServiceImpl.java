@@ -32,18 +32,23 @@ public class UserServiceImpl implements UserService {
         String name = jwt.getClaimAsString("name");
         String picture = jwt.getClaimAsString("picture");
 
-        userRepository.findByKeycloakId(keycloakId)
-                .orElseGet(() -> {
-                    log.info("ServiceImpl: Tạo mới tài khoản tự động từ SSO - Email: {}", email);
-                    return userRepository.save(UserEntity.builder()
-                            .id(UUID.randomUUID().toString())
-                            .keycloakId(keycloakId)
-                            .email(email != null ? email : "no-email@sso.local")
-                            .fullName(name)
-                            .avatarUrl(picture)
-                            .createdAt(LocalDateTime.now())
-                            .build());
-                });
+        UserEntity user = userRepository.findByKeycloakId(keycloakId)
+                .orElseGet(() -> UserEntity.builder()
+                        .id(UUID.randomUUID().toString())
+                        .keycloakId(keycloakId)
+                        .email(email != null ? email.trim().toLowerCase() : "no-email@sso.local")
+                        .fullName(name)
+                        .avatarUrl(picture)
+                        .createdAt(LocalDateTime.now())
+                        .build());
+
+        // Email from the current SSO token is the identity used for invitations.
+        // Refresh it on every authenticated request so an old local profile cannot
+        // make a valid invitation look like an unrelated user.
+        if (email != null && !email.isBlank()) user.setEmail(email.trim().toLowerCase());
+        if (name != null && !name.isBlank()) user.setFullName(name);
+        if (picture != null) user.setAvatarUrl(picture);
+        userRepository.save(user);
     }
 
     @Override

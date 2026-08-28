@@ -9,4 +9,5 @@ import java.util.Optional;
 @Repository
 public interface UserRepository extends JpaRepository<UserEntity, String> {
     Optional<UserEntity> findByKeycloakId(String keycloakId);
+    Optional<UserEntity> findByEmailIgnoreCase(String email);
 }

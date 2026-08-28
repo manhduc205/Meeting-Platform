@@ -2,6 +2,7 @@ package com.manhduc205.meetingplatform.services.Impl;
 
 import com.manhduc205.meetingplatform.enums.ParticipantRole;
 import com.manhduc205.meetingplatform.enums.MeetingStatus;
+import com.manhduc205.meetingplatform.enums.InvitationStatus;
 import com.manhduc205.meetingplatform.enums.MessageCategory;
 import com.manhduc205.meetingplatform.enums.PresenceType;
 import com.manhduc205.meetingplatform.models.MeetingParticipantEntity;
@@ -14,6 +15,7 @@ import com.manhduc205.meetingplatform.models.MeetingEntity;
 import com.manhduc205.meetingplatform.models.UserEntity;
 import com.manhduc205.meetingplatform.repositories.MeetingParticipantRepository;
 import com.manhduc205.meetingplatform.repositories.MeetingRepository;
+import com.manhduc205.meetingplatform.repositories.MeetingInvitationRepository;
 import com.manhduc205.meetingplatform.repositories.UserRepository;
 import com.manhduc205.meetingplatform.services.MeetingParticipantJoinRecorder;
 import com.manhduc205.meetingplatform.services.MeetingParticipantService;
@@ -28,6 +30,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +46,7 @@ import java.util.stream.Collectors;
 public class MeetingParticipantServiceImpl implements MeetingParticipantService {
 
     private final MeetingRepository meetingRepository;
+    private final MeetingInvitationRepository invitationRepository;
     private final UserRepository userRepository;
     private final MeetingParticipantRepository participantRepository;
     private final MeetingParticipantJoinRecorder joinRecorder;
@@ -51,6 +55,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
     private final RedisTemplate<String, Object> redisTemplate;
     private final StringRedisTemplate stringRedisTemplate;
     private final SimpMessagingTemplate messagingTemplate;
+    private final PasswordEncoder passwordEncoder;
 
     private static final String ACTIVE_PARTICIPANTS_PREFIX = "active:participants:";
     private static final String WAITING_PARTICIPANTS_PREFIX = "waiting:participants:";
@@ -242,8 +247,8 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode).orElseThrow();
         UserEntity user = userRepository.findById(internalUserId).orElseThrow();
 
-        if (MeetingStatus.ENDED.name().equals(meeting.getStatus())) {
-            throw new IllegalStateException("Cuộc họp đã kết thúc");
+        if (meeting.getStatus() != MeetingStatus.IN_PROGRESS) {
+            throw new IllegalStateException("Cuộc họp chưa được Host bắt đầu hoặc đã kết thúc");
         }
 
         if (meeting.getHostId().equals(internalUserId)) {
@@ -276,9 +281,19 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         }
         // =====================================================================
 
-        // 2. Kiểm tra mật khẩu (Chỉ dành cho người mới gọi API lần đầu)
-        if (meeting.getMeetingPassword() != null && !meeting.getMeetingPassword().isEmpty()) {
-            if (meetingPassword == null || !meeting.getMeetingPassword().equals(meetingPassword)) {
+        // Người đã được mời bằng đúng email đang đăng nhập được xác thực bằng lời mời,
+        // nên không phải nhập lại passcode của Host. Người chưa được mời vẫn phải có passcode.
+        boolean hasActiveInvitation = invitationRepository.existsByMeetingIdAndInviteeEmailAndStatusIn(
+                meeting.getId(), user.getEmail().trim().toLowerCase(Locale.ROOT),
+                List.of(InvitationStatus.PENDING, InvitationStatus.ACCEPTED))
+                || invitationRepository.existsByMeetingIdAndInviteeUserIdAndStatusIn(
+                        meeting.getId(), internalUserId, List.of(InvitationStatus.PENDING, InvitationStatus.ACCEPTED));
+
+        // 2. Kiểm tra mật khẩu (chỉ dành cho người mới không có lời mời hợp lệ)
+        if (!hasActiveInvitation && meeting.getMeetingPassword() != null && !meeting.getMeetingPassword().isEmpty()) {
+            boolean passwordMatches = meetingPassword != null &&
+                    (passwordEncoder.matches(meetingPassword, meeting.getMeetingPassword()) || meeting.getMeetingPassword().equals(meetingPassword));
+            if (!passwordMatches) {
                 throw new SecurityException("Password không chính xác!");
             }
         }

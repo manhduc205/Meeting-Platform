@@ -37,11 +37,17 @@ public class MeetingEntity {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "start_time")
-    private Instant startTime;
+    @Column(name = "planned_start_time", nullable = false)
+    private Instant plannedStartTime;
 
-    @Column(name = "end_time")
-    private Instant endTime;
+    @Column(name = "planned_end_time", nullable = false)
+    private Instant plannedEndTime;
+
+    @Column(name = "started_at")
+    private Instant startedAt;
+
+    @Column(name = "ended_at")
+    private Instant endedAt;
 
     @Column(name = "google_event_id")
     private String googleEventId;
@@ -54,9 +60,10 @@ public class MeetingEntity {
     @Builder.Default
     private Boolean isScreenShareDisabled = false;
 
-    @Column(length = 20)
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20, nullable = false)
     @Builder.Default
-    private String status = MeetingStatus.SCHEDULED.name();
+    private MeetingStatus status = MeetingStatus.SCHEDULED;
 
     @Column(name = "is_waiting_room_enabled")
     @Builder.Default
@@ -64,6 +71,10 @@ public class MeetingEntity {
 
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     @PrePersist
     protected void onCreate() {

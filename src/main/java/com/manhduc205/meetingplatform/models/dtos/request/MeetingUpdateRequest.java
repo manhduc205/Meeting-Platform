@@ -1,14 +1,13 @@
 package com.manhduc205.meetingplatform.models.dtos.request;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
+
 import java.time.Instant;
-import java.util.List;
 
 @Data
-public class MeetingCreateRequest {
+public class MeetingUpdateRequest {
     @NotBlank(message = "Tên cuộc họp là bắt buộc.")
     private String title;
     private String description;
@@ -18,5 +17,4 @@ public class MeetingCreateRequest {
     private Instant plannedStartTime;
     @NotNull(message = "Thời gian kết thúc là bắt buộc.")
     private Instant plannedEndTime;
-    private List<@Email(message = "Email khách mời không hợp lệ.") String> inviteeEmails = List.of();
 }

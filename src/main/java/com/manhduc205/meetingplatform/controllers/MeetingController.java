@@ -1,7 +1,7 @@
 package com.manhduc205.meetingplatform.controllers;
 
-import com.manhduc205.meetingplatform.models.dtos.request.JoinMeetingRequest;
-import com.manhduc205.meetingplatform.models.dtos.request.MeetingCreateRequest;
+import com.manhduc205.meetingplatform.models.dtos.request.*;
+import com.manhduc205.meetingplatform.models.dtos.response.InvitationResponse;
 import com.manhduc205.meetingplatform.models.dtos.response.JoinMeetingResponse;
 import com.manhduc205.meetingplatform.models.dtos.response.MeetingResponse;
 import com.manhduc205.meetingplatform.models.dtos.response.ParticipantAttendanceResponse;
@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -22,9 +23,14 @@ public class MeetingController {
     private final MeetingService meetingService;
     private final MeetingParticipantService participantService;
 
-    @PostMapping("/create")
-    public ResponseEntity<MeetingResponse> createMeeting(@RequestBody MeetingCreateRequest request) {
+    @PostMapping({"", "/scheduled", "/create"})
+    public ResponseEntity<MeetingResponse> createMeeting(@Valid @RequestBody MeetingCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(meetingService.createMeeting(request));
+    }
+
+    @PostMapping("/instant")
+    public ResponseEntity<MeetingResponse> createInstantMeeting(@Valid @RequestBody InstantMeetingCreateRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(meetingService.createInstantMeeting(request));
     }
 
     @GetMapping("/my-meetings")
@@ -35,8 +41,13 @@ public class MeetingController {
     @PutMapping("/{meetingCode}")
     public ResponseEntity<MeetingResponse> updateMeeting(
             @PathVariable String meetingCode,
-            @RequestBody MeetingCreateRequest request) {
+            @Valid @RequestBody MeetingUpdateRequest request) {
         return ResponseEntity.ok(meetingService.updateMeeting(meetingCode, request));
+    }
+
+    @PostMapping("/{meetingCode}/start")
+    public ResponseEntity<MeetingResponse> startMeeting(@PathVariable String meetingCode) {
+        return ResponseEntity.ok(meetingService.startMeeting(meetingCode));
     }
 
     @DeleteMapping("/{meetingCode}")
@@ -48,6 +59,17 @@ public class MeetingController {
     @PutMapping("/{meetingCode}/end")
     public ResponseEntity<MeetingResponse> endMeeting(@PathVariable String meetingCode) {
         return ResponseEntity.ok(meetingService.endMeeting(meetingCode));
+    }
+
+    @PostMapping("/{meetingCode}/invitations")
+    public ResponseEntity<List<InvitationResponse>> addInvitations(
+            @PathVariable String meetingCode, @Valid @RequestBody InvitationCreateRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(meetingService.addInvitations(meetingCode, request));
+    }
+
+    @GetMapping("/{meetingCode}/invitations")
+    public ResponseEntity<List<InvitationResponse>> getInvitations(@PathVariable String meetingCode) {
+        return ResponseEntity.ok(meetingService.getInvitations(meetingCode));
     }
 
     @PostMapping("/{meetingCode}/join")

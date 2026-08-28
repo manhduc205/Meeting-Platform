@@ -48,8 +48,8 @@ public class MediaServiceImpl implements MediaService {
         MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cuộc họp"));
 
-        if (MeetingStatus.ENDED.name().equals(meeting.getStatus())) {
-            throw new IllegalStateException("Cuộc họp đã kết thúc");
+        if (meeting.getStatus() != MeetingStatus.IN_PROGRESS) {
+            throw new IllegalStateException("Cuộc họp chưa được Host bắt đầu hoặc đã kết thúc.");
         }
 
         // 1. Kiểm tra phòng bị khóa — từ chối tất cả Guest kết nối mới
