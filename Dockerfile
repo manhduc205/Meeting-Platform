@@ -2,13 +2,12 @@
 FROM maven:3.9.6-eclipse-temurin-21 AS builder
 WORKDIR /build
 
-# Copy file pom.xml trước để tận dụng Docker Layer Cache
+# BuildKit cache giữ Maven repository giữa các lần build mà không kéo toàn bộ
+# dependency/plugin graph bằng dependency:go-offline.
 COPY pom.xml .
-RUN mvn dependency:go-offline
-
-# Copy toàn bộ source code và build (Bỏ qua test để tăng tốc)
 COPY src ./src
-RUN mvn clean package -DskipTests
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -B clean package -DskipTests
 
 # Stage 2: Runtime Environment với Java 21 JRE (Siêu nhẹ Alpine)
 FROM eclipse-temurin:21-jre-alpine

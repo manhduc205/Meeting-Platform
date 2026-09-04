@@ -22,6 +22,8 @@ public interface MeetingMapper {
                 code.substring(3, 6),
                 code.substring(6));
     }
+    @Mapping(source = "isWaitingRoomEnabled", target = "waitingRoomEnabled")
+    @Mapping(target = "hasPassword", expression = "java(meetingEntity.getMeetingPassword() != null && !meetingEntity.getMeetingPassword().isBlank())")
     MeetingResponse ToMeetingResponse(MeetingEntity meetingEntity);
 }
 

@@ -1,7 +1,6 @@
 package com.manhduc205.meetingplatform.services.Impl;
 
 import com.manhduc205.meetingplatform.services.MediaTokenService;
-import com.manhduc205.meetingplatform.utils.UserContext;
 import io.livekit.server.AccessToken;
 import io.livekit.server.RoomJoin;
 import io.livekit.server.RoomName;
@@ -19,13 +18,13 @@ public class MediaTokenServiceImpl implements MediaTokenService {
 
     @Value("${app.livekit.api-secret}")
     private String apiSecret;
+
     @Override
-    public String generateLiveKitToken(String meetingCode, String userId) {
-        String internalUserId = UserContext.getUserId();
+    public String generateLiveKitToken(String meetingCode, String userId, String displayName) {
         AccessToken token = new AccessToken(apiKey, apiSecret);
 
-        token.setName(internalUserId);
-        token.setIdentity(internalUserId);
+        token.setName(displayName);
+        token.setIdentity(userId);
 
         token.addGrants(new RoomJoin(true), new RoomName(meetingCode));
 

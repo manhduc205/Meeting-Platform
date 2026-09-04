@@ -1,6 +1,7 @@
 api_key: livekit_api_key_2026
 api_secret: livekit_api_secret_2026_super_secure
 ws_url: ws://livekit:7880
+insecure: true
 
 redis:
   address: redis:6379

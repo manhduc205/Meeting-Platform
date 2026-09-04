@@ -5,6 +5,8 @@ import com.manhduc205.meetingplatform.enums.MeetingStatus;
 import com.manhduc205.meetingplatform.enums.InvitationStatus;
 import com.manhduc205.meetingplatform.enums.MessageCategory;
 import com.manhduc205.meetingplatform.enums.PresenceType;
+import com.manhduc205.meetingplatform.exceptions.MeetingJoinDeniedException;
+import com.manhduc205.meetingplatform.exceptions.ResourceNotFoundException;
 import com.manhduc205.meetingplatform.models.MeetingParticipantEntity;
 import com.manhduc205.meetingplatform.models.dtos.request.SignalingMessage;
 import com.manhduc205.meetingplatform.models.dtos.mappers.ParticipantMapper;
@@ -58,6 +60,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
     private final PasswordEncoder passwordEncoder;
 
     private static final String ACTIVE_PARTICIPANTS_PREFIX = "active:participants:";
+    private static final String ADMITTED_PARTICIPANTS_PREFIX = "admitted:participants:";
     private static final String WAITING_PARTICIPANTS_PREFIX = "waiting:participants:";
     private static final String PENDING_KNOCK_PREFIX = "pending:knock:";
     private static final String RAISED_HANDS_PREFIX = "meeting:raised_hands:";
@@ -244,7 +247,8 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
     @Transactional
     public JoinMeetingResponse joinMeeting(String meetingCode, String meetingPassword) {
         String internalUserId = UserContext.getUserId();
-        MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode).orElseThrow();
+        MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode)
+                .orElseThrow(() -> new ResourceNotFoundException("MEETING_NOT_FOUND", "Mã phòng không tồn tại"));
         UserEntity user = userRepository.findById(internalUserId).orElseThrow();
 
         if (meeting.getStatus() != MeetingStatus.IN_PROGRESS) {
@@ -252,7 +256,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         }
 
         if (meeting.getHostId().equals(internalUserId)) {
-            addActiveParticipant(meetingCode, internalUserId);
+            addAdmittedParticipant(meetingCode, internalUserId);
             joinRecorder.recordParticipantJoinAsync(meeting.getId(), internalUserId, ParticipantRole.HOST);
             return JoinMeetingResponse.builder().meetingCode(meetingCode).userId(internalUserId)
                     .status(ParticipantStatus.APPROVED.name()).build();
@@ -260,14 +264,15 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
         if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(
                 KICKED_PARTICIPANT_PREFIX + meetingCode + ":" + internalUserId))) {
-            throw new SecurityException("Bạn đã bị mời ra khỏi cuộc họp này");
+            throw new MeetingJoinDeniedException(
+                    "PARTICIPANT_KICKED", "Bạn đã bị chủ phòng mời ra và không thể tham gia lại cuộc họp này");
         }
 
-        String activeKey = ACTIVE_PARTICIPANTS_PREFIX + meetingCode;
         String waitingKey = WAITING_PARTICIPANTS_PREFIX + meetingCode;
 
-        // Nếu đã lọt vào danh sách ACTIVE (phòng không có phòng chờ) -> Trả về luôn
-        if (stringRedisTemplate.opsForZSet().score(activeKey, internalUserId) != null) {
+        // Admission is independent from online presence. A transient disconnect
+        // must not force an already-approved user back into the waiting room.
+        if (isAdmitted(meetingCode, internalUserId)) {
             joinRecorder.recordParticipantJoinAsync(meeting.getId(), internalUserId, ParticipantRole.PARTICIPANT);
             return JoinMeetingResponse.builder().meetingCode(meetingCode).userId(internalUserId)
                     .status(ParticipantStatus.APPROVED.name()).message("You are already in the meeting!").build();
@@ -294,13 +299,13 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
             boolean passwordMatches = meetingPassword != null &&
                     (passwordEncoder.matches(meetingPassword, meeting.getMeetingPassword()) || meeting.getMeetingPassword().equals(meetingPassword));
             if (!passwordMatches) {
-                throw new SecurityException("Password không chính xác!");
+                throw new MeetingJoinDeniedException("INVALID_MEETING_PASSWORD", "Mật khẩu phòng không chính xác");
             }
         }
 
         // 3. Logic phòng chờ
         if (meeting.getIsWaitingRoomEnabled() != null && !meeting.getIsWaitingRoomEnabled()) {
-            addActiveParticipant(meetingCode, internalUserId);
+            addAdmittedParticipant(meetingCode, internalUserId);
             joinRecorder.recordParticipantJoinAsync(meeting.getId(), internalUserId, ParticipantRole.PARTICIPANT);
             return JoinMeetingResponse.builder().meetingCode(meetingCode).userId(internalUserId)
                     .status(ParticipantStatus.APPROVED.name()).message("Joined successfully!").build();
@@ -332,6 +337,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
         // Xóa khỏi active participants với StringRedisTemplate (đồng bộ serializer)
         stringRedisTemplate.opsForZSet().remove(ACTIVE_PARTICIPANTS_PREFIX + meetingCode, internalUserId);
+        stringRedisTemplate.opsForSet().remove(ADMITTED_PARTICIPANTS_PREFIX + meetingCode, internalUserId);
 
         List<Object> pipelineResults = redisTemplate.executePipelined(new SessionCallback<Object>() {
             @Override
@@ -342,7 +348,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
                 return null;
             }
         });
-        presenceService.removeOnlineUser(meetingCode, internalUserId);
+        presenceService.removeAllUserConnections(meetingCode, internalUserId);
 
         Long removedRaisedHand = (Long) pipelineResults.get(2);
 
@@ -406,7 +412,6 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         validateHostPrivilege(meetingCode);
 
         String waitingKey = WAITING_PARTICIPANTS_PREFIX + meetingCode;
-        String activeKey = ACTIVE_PARTICIPANTS_PREFIX + meetingCode;
 
         Set<String> idsToProcess = new HashSet<>();
         if (userIds == null || userIds.isEmpty()) {
@@ -418,7 +423,6 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
 
         if (idsToProcess.isEmpty()) return;
 
-        long currentTime = System.currentTimeMillis();
         for (String targetId : idsToProcess) {
             // 1. Xóa User khỏi danh sách chờ trên Redis
             redisTemplate.opsForZSet().remove(waitingKey, targetId);
@@ -426,10 +430,7 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
             String statusStr = (action == WaitingRoomAction.APPROVE) ? "APPROVED" : "REJECTED";
 
             if (action == WaitingRoomAction.APPROVE) {
-                // 2. CẬP NHẬT SỐ LƯỢNG: Nạp ngay User vào danh sách ACTIVE trên Redis
-                stringRedisTemplate.opsForZSet().add(activeKey, targetId, currentTime++);
-                stringRedisTemplate.expire(activeKey, ACTIVE_PARTICIPANTS_TTL_HOURS, TimeUnit.HOURS);
-                presenceService.addOnlineUser(meetingCode, targetId);
+                addAdmittedParticipant(meetingCode, targetId);
             }
 
             // 3. ĐỒNG BỘ REAL-TIME CHO GUEST (Người đang đợi ngoài sảnh)
@@ -512,11 +513,15 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
         return map;
     }
 
-    private void addActiveParticipant(String meetingCode, String userId) {
-        String activeKey = ACTIVE_PARTICIPANTS_PREFIX + meetingCode;
-        stringRedisTemplate.opsForZSet().add(activeKey, userId, System.currentTimeMillis());
-        stringRedisTemplate.expire(activeKey, ACTIVE_PARTICIPANTS_TTL_HOURS, TimeUnit.HOURS);
-        presenceService.addOnlineUser(meetingCode, userId);
+    private void addAdmittedParticipant(String meetingCode, String userId) {
+        String admittedKey = ADMITTED_PARTICIPANTS_PREFIX + meetingCode;
+        stringRedisTemplate.opsForSet().add(admittedKey, userId);
+        stringRedisTemplate.expire(admittedKey, ACTIVE_PARTICIPANTS_TTL_HOURS, TimeUnit.HOURS);
+    }
+
+    private boolean isAdmitted(String meetingCode, String userId) {
+        return Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember(
+                ADMITTED_PARTICIPANTS_PREFIX + meetingCode, userId));
     }
 
     private void addWaitingParticipant(String meetingCode, String userId) {
@@ -546,12 +551,17 @@ public class MeetingParticipantServiceImpl implements MeetingParticipantService 
             if (Boolean.TRUE.equals(redisTemplate.hasKey(pendingKnockKey))) return;
 
             redisTemplate.opsForValue().set(pendingKnockKey, "KNOCKING", PENDING_KNOCK_TTL_SECONDS, TimeUnit.SECONDS);
-            String userName = user.getFullName() != null ? user.getFullName() : user.getEmail();
+            String userName = user.getFullName() != null && !user.getFullName().isBlank()
+                    ? user.getFullName().trim()
+                    : user.getEmail();
+            int lastSpace = userName.lastIndexOf(' ');
+            String firstName = lastSpace > 0 ? userName.substring(0, lastSpace) : userName;
+            String lastName = lastSpace > 0 ? userName.substring(lastSpace + 1) : "";
 
             messagingTemplate.convertAndSend(
                     "/topic/meeting." + meetingCode + ".host-notifications",
-                    Map.of("type", "KNOCK_REQUEST", "userId", user.getId(), "userName", userName,
-                            "avatarUrl", user.getAvatarUrl(), "message", userName + " đang xin vào phòng"));
+                    Map.of("type", "NEW_KNOCK", "userId", user.getId(),
+                            "firstName", firstName, "lastName", lastName));
         } catch (Exception e) {
             log.error("Lỗi gửi notification knock: {}", e.getMessage());
         }

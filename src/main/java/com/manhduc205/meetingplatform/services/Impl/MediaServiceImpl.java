@@ -3,7 +3,9 @@ package com.manhduc205.meetingplatform.services.Impl;
 import com.manhduc205.meetingplatform.models.dtos.response.MediaJoinResponse;
 import com.manhduc205.meetingplatform.models.MeetingEntity;
 import com.manhduc205.meetingplatform.enums.MeetingStatus;
+import com.manhduc205.meetingplatform.exceptions.MeetingJoinDeniedException;
 import com.manhduc205.meetingplatform.repositories.MeetingRepository;
+import com.manhduc205.meetingplatform.repositories.UserRepository;
 import com.manhduc205.meetingplatform.services.MediaService;
 import com.manhduc205.meetingplatform.services.MediaTokenService;
 import com.manhduc205.meetingplatform.utils.UserContext;
@@ -13,8 +15,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.concurrent.TimeUnit;
-
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -23,6 +23,7 @@ public class MediaServiceImpl implements MediaService {
     private final MediaTokenService mediaTokenService;
     private final StringRedisTemplate stringRedisTemplate;
     private final MeetingRepository meetingRepository;
+    private final UserRepository userRepository;
 
     @Value("${app.livekit.host}")
     private String liveKitHost;
@@ -37,9 +38,8 @@ public class MediaServiceImpl implements MediaService {
     @Value("${app.webrtc.turn-password}")
     private String turnPassword;
 
-    private static final String ACTIVE_PARTICIPANTS_PREFIX = "active:participants:";
+    private static final String ADMITTED_PARTICIPANTS_PREFIX = "admitted:participants:";
     private static final String KICKED_PARTICIPANT_PREFIX = "meeting:kicked:";
-    private static final long ACTIVE_PARTICIPANTS_TTL_HOURS = 12;
 
     @Override
     public MediaJoinResponse prepareMediaConnection(String meetingCode) {
@@ -47,6 +47,8 @@ public class MediaServiceImpl implements MediaService {
 
         MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode)
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy cuộc họp"));
+        var user = userRepository.findById(internalUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy người dùng"));
 
         if (meeting.getStatus() != MeetingStatus.IN_PROGRESS) {
             throw new IllegalStateException("Cuộc họp chưa được Host bắt đầu hoặc đã kết thúc.");
@@ -63,27 +65,16 @@ public class MediaServiceImpl implements MediaService {
         if (!isHost) {
             if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(
                     KICKED_PARTICIPANT_PREFIX + meetingCode + ":" + internalUserId))) {
-                throw new SecurityException("Bạn đã bị mời ra khỏi cuộc họp này");
+                throw new MeetingJoinDeniedException(
+                        "PARTICIPANT_KICKED", "Bạn đã bị chủ phòng mời ra và không thể tham gia lại cuộc họp này");
             }
 
-            String activeKey = ACTIVE_PARTICIPANTS_PREFIX + meetingCode;
-
-            // 2. Nếu phòng tắt Waiting Room → Guest được vào thẳng, tự động ghi vào Redis
-            if (Boolean.FALSE.equals(meeting.getIsWaitingRoomEnabled())) {
-                Double existingScore = stringRedisTemplate.opsForZSet().score(activeKey, internalUserId);
-                if (existingScore == null) {
-                    stringRedisTemplate.opsForZSet().add(activeKey, internalUserId, System.currentTimeMillis());
-                    stringRedisTemplate.expire(activeKey, ACTIVE_PARTICIPANTS_TTL_HOURS, TimeUnit.HOURS);
-                    log.info("✅ Auto-approved guest [{}] vào phòng [{}] (Waiting Room đã tắt)", internalUserId, meetingCode);
-                }
-            } else {
-                // 3. Phòng chờ đang bật → bắt buộc phải được Host duyệt trước
-                Double score = stringRedisTemplate.opsForZSet().score(activeKey, internalUserId);
-                if (score == null) {
-                    log.error("CẢNH BÁO: Guest [{}] cố lấy Token Media phòng [{}] khi chưa được duyệt!",
-                            internalUserId, meetingCode);
-                    throw new SecurityException("Bạn chưa được Host duyệt vào phòng!");
-                }
+            boolean admitted = Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember(
+                    ADMITTED_PARTICIPANTS_PREFIX + meetingCode, internalUserId));
+            if (!admitted) {
+                log.warn("Guest [{}] cố lấy token media phòng [{}] khi chưa được duyệt",
+                        internalUserId, meetingCode);
+                throw new SecurityException("Bạn chưa được Host duyệt vào phòng!");
             }
         } else {
             log.info("Host [{}] đang khởi tạo luồng Media cho phòng [{}]", internalUserId, meetingCode);
@@ -98,7 +89,10 @@ public class MediaServiceImpl implements MediaService {
                 .build();
 
         // 5. Sinh Token LiveKit
-        String liveKitToken = mediaTokenService.generateLiveKitToken(meetingCode, internalUserId);
+        String displayName = user.getFullName() == null || user.getFullName().isBlank()
+                ? user.getEmail()
+                : user.getFullName();
+        String liveKitToken = mediaTokenService.generateLiveKitToken(meetingCode, internalUserId, displayName);
 
         return MediaJoinResponse.builder()
                 .mode("SFU")

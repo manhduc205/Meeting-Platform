@@ -32,13 +32,18 @@ public class WebSocketEventListener {
                 .map(user -> user.getName())
                 .orElse(null);
 
-        String meetingCode = (String) headers.getSessionAttributes().get("meetingCode");
+        String meetingCode = Optional.ofNullable(headers.getSessionAttributes())
+                .map(attributes -> (String) attributes.get("meetingCode"))
+                .orElse(null);
+        String sessionId = headers.getSessionId();
 
-        if (userId != null && meetingCode != null) {
+        if (userId != null && meetingCode != null && sessionId != null) {
             log.warn("Phát hiện User [{}] rớt mạng khỏi phòng [{}]", userId, meetingCode);
 
-            // Gọi Service để chuyển trạng thái sang RECONNECTING
-            presenceService.markUserAsReconnecting(meetingCode, userId);
+            var transition = presenceService.markConnectionAsReconnecting(meetingCode, userId, sessionId);
+            if (transition != MeetingPresenceService.PresenceTransition.RECONNECTING) {
+                return;
+            }
 
             // Bắn thông báo cho những người còn lại biết để hiển thị icon "Đang kết nối lại..."
             SignalingMessage disconnectMsg = SignalingMessage.builder()

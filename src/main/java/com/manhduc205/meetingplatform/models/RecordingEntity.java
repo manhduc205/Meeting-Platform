@@ -1,9 +1,10 @@
 package com.manhduc205.meetingplatform.models;
 
 import com.manhduc205.meetingplatform.enums.RecordingStatus;
+import com.manhduc205.meetingplatform.enums.RecordingVisibility;
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "recordings")
@@ -38,22 +39,33 @@ public class RecordingEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "visibility")
-    private RecordingStatus visibility;
+    private RecordingVisibility visibility;
+
+    /**
+     * Prefix inside the MinIO bucket. All assets belonging to this recording
+     * are written below this prefix, for example recordings/{uuid}/video/source.mp4.
+     */
+    @Column(name = "storage_prefix")
+    private String storagePrefix;
+
+    @Column(name = "purge_after")
+    private Instant purgeAfter;
 
     @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        Instant now = Instant.now();
+        createdAt = now;
+        updatedAt = now;
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = Instant.now();
     }
 }

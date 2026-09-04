@@ -2,11 +2,12 @@ package com.manhduc205.meetingplatform.models.dtos.response;
 
 import lombok.Builder;
 import lombok.Data;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
 public class RecordingResponse {
+    private Long id;
     private String egressId;
     private String meetingCode;
     private String recordingName;
@@ -18,5 +19,6 @@ public class RecordingResponse {
     private String thumbnailUrl;
     private String fileUrl;
     private Long duration;
-    private LocalDateTime createdAt;
+    private Instant createdAt;
+    private Instant purgeAfter;
 }

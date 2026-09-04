@@ -1,12 +1,16 @@
 package com.manhduc205.meetingplatform.services.Impl;
 
 import com.manhduc205.meetingplatform.enums.OutboxEventStatus;
+import com.manhduc205.meetingplatform.enums.OutboxEventType;
+import com.manhduc205.AI_application.enums.RecordingAiJobStatus;
 import com.manhduc205.meetingplatform.models.OutboxEventEntity;
 import com.manhduc205.meetingplatform.repositories.OutboxEventRepository;
+import com.manhduc205.AI_application.repository.RecordingAiJobRepository;
 import com.manhduc205.meetingplatform.services.OutboxEventService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -16,6 +20,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OutboxEventServiceImpl implements OutboxEventService {
     private final OutboxEventRepository outboxEventRepository;
+    private final RecordingAiJobRepository recordingAiJobRepository;
+
+    @Value("${app.notifications.outbox.max-attempts:5}")
+    private int maxAttempts;
 
     @Override
     @Transactional
@@ -48,11 +56,21 @@ public class OutboxEventServiceImpl implements OutboxEventService {
         OutboxEventEntity event = findEvent(eventId);
         int attempts = event.getAttemptCount() + 1;
         event.setAttemptCount(attempts);
-        event.setStatus(OutboxEventStatus.FAILED);
+        boolean terminalFailure = attempts >= maxAttempts;
+        event.setStatus(terminalFailure ? OutboxEventStatus.FAILED : OutboxEventStatus.RETRY);
         event.setLockedUntil(null);
         event.setNextRetryAt(Instant.now().plus(Math.min(30, 1L << Math.min(attempts, 5)), ChronoUnit.MINUTES));
         String message = exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
         event.setLastError(message.substring(0, Math.min(message.length(), 1000)));
+        if (terminalFailure && event.getEventType() == OutboxEventType.TRANSCRIPT_REQUESTED) {
+            recordingAiJobRepository.findById(event.getAggregateId()).ifPresent(job -> {
+                if (job.getStatus() == RecordingAiJobStatus.REQUESTED) {
+                    job.setStatus(RecordingAiJobStatus.FAILED);
+                    job.setLastError(event.getLastError());
+                    job.setCompletedAt(Instant.now());
+                }
+            });
+        }
     }
 
     private OutboxEventEntity findEvent(String eventId) {

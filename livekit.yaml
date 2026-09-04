@@ -17,7 +17,12 @@ rtc:
   # Required on a public VM behind Docker/NAT. It is also safe for local Docker
   # testing because host candidates remain available.
   use_external_ip: true
+  # Advertise the Docker-network candidate alongside the public candidate so
+  # the Egress worker can receive media without relying on NAT hairpinning.
+  advertise_internal_ip: true
 webhook:
   api_key: livekit_api_key_2026
   urls:
-    - "http://backend:8081/api/v1/webhooks/livekit/egress"
+    # Reach the backend through its published port. This works when Spring is
+    # run from IntelliJ on the host and when the backend Compose service runs.
+    - "http://host.docker.internal:8081/api/v1/webhooks/livekit/egress"

@@ -11,7 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SpringBootTest(properties = {
 		"spring.flyway.enabled=false",
 		"spring.jpa.hibernate.ddl-auto=none",
-		"app.notifications.outbox.polling-enabled=false"
+		"app.notifications.outbox.polling-enabled=false",
+		"app.recording-deletion.enabled=false"
 })
 class MeetingplatformApplicationTests {
 

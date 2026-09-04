@@ -10,4 +10,5 @@ public interface RecordingService {
     void handleEgressWebhook(String payload);
     List<RecordingResponse> getMeetingRecordings(String meetingCode);
     List<RecordingResponse> getAllAccessibleRecordingsForCurrentUser();
+    List<RecordingResponse> getTrashForCurrentUser();
 }

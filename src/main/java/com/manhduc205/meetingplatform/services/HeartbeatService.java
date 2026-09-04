@@ -8,7 +8,7 @@ package com.manhduc205.meetingplatform.services;
  */
 public interface HeartbeatService {
 
-    void updateHeartbeat(String meetingCode, String userId);
+    boolean updateHeartbeat(String meetingCode, String userId, String sessionId);
 
     void cleanupExpiredHeartbeats();
 }

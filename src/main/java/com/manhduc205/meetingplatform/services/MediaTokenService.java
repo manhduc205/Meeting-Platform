@@ -1,5 +1,5 @@
 package com.manhduc205.meetingplatform.services;
 
 public interface MediaTokenService {
-    String generateLiveKitToken(String meetingCode, String userId);
+    String generateLiveKitToken(String meetingCode, String userId, String displayName);
 }

@@ -6,11 +6,19 @@ import java.util.List;
 import java.util.Set;
 
 public interface MeetingPresenceService {
-    void addOnlineUser(String meetingCode, String userId);
-    void removeOnlineUser(String meetingCode, String userId);
-    Set<Object> getOnlineUsers(String meetingCode);
-//    boolean shouldSwitchToSfu(String meetingCode);
+    enum PresenceTransition {
+        JOINED,
+        RECONNECTED,
+        RECONNECTING,
+        OFFLINE,
+        UNCHANGED
+    }
+
+    Set<String> getOnlineUsers(String meetingCode);
     void handleActionMessage(SignalingMessage message);
-    List<SignalingMessage> handlePresenceUpdate(SignalingMessage message);
-    void markUserAsReconnecting(String meetingCode, String userId);
+    List<SignalingMessage> handlePresenceUpdate(SignalingMessage message, String sessionId);
+    PresenceTransition markConnectionAsReconnecting(String meetingCode, String userId, String sessionId);
+    boolean refreshConnection(String meetingCode, String userId, String sessionId);
+    void cleanupStaleConnections();
+    void removeAllUserConnections(String meetingCode, String userId);
 }

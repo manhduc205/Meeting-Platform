@@ -12,6 +12,18 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+        @ExceptionHandler(MeetingJoinDeniedException.class)
+        public ResponseEntity<?> handleMeetingJoinDenied(MeetingJoinDeniedException ex) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                        Map.of("success", false, "message", ex.getMessage(), "errorCode", ex.getErrorCode()));
+        }
+
+        @ExceptionHandler(ResourceNotFoundException.class)
+        public ResponseEntity<?> handleResourceNotFound(ResourceNotFoundException ex) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                        Map.of("success", false, "message", ex.getMessage(), "errorCode", ex.getErrorCode()));
+        }
+
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<?> handleIllegalArgument(IllegalArgumentException ex) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(

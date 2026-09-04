@@ -33,7 +33,19 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:} # Điền pass vào đây nếu máy bạn có cài, không thì để trống
     mongodb:
+      uri: ${SPRING_DATA_MONGODB_URI:mongodb://localhost:27017/meetingplatform}
       auto-index-creation: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:meeting}
+    password: ${RABBITMQ_PASSWORD:meeting123}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
   security:
     oauth2:
       resourceserver:
@@ -58,9 +70,20 @@ app:
     api-secret: ${LIVEKIT_API_SECRET:livekit_api_secret_2026_super_secure}
   minio:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
-    access-key: minioadmin
-    secret-key: minioadmin123
-    bucket: meeting-recordings
+    # Endpoint embedded in the LiveKit Egress request. It must be reachable
+    # from the Egress container, independently from the backend client URL.
+    egress-endpoint: ${MINIO_EGRESS_ENDPOINT:http://minio:9000}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin123}
+    bucket: ${MINIO_BUCKET:meeting-recordings}
+    max-transcript-bytes: ${MINIO_MAX_TRANSCRIPT_BYTES:52428800}
+  recording-ai:
+    publisher-confirm-timeout-seconds: ${RECORDING_AI_CONFIRM_TIMEOUT_SECONDS:10}
+    max-consumer-retries: ${RECORDING_AI_MAX_CONSUMER_RETRIES:3}
+  recording-deletion:
+    enabled: ${RECORDING_DELETION_ENABLED:true}
+    trash-retention-days: ${RECORDING_TRASH_RETENTION_DAYS:3}
+    fixed-delay-ms: ${RECORDING_DELETION_POLL_DELAY_MS:60000}
   webrtc:
     stun-url: stun:stun.l.google.com:19302
     turn-url: ${TURN_URL:turn:localhost:3478}
@@ -70,6 +93,7 @@ app:
     outbox:
       polling-enabled: ${OUTBOX_POLLING_ENABLED:true}
       fixed-delay-ms: ${OUTBOX_POLLING_DELAY_MS:10000}
+      max-attempts: ${OUTBOX_MAX_ATTEMPTS:5}
     resend:
       api-key: ${RESEND_API_KEY:}
       from: ${RESEND_FROM_EMAIL:Meeting Platform <onboarding@resend.dev>}

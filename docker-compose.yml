@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   redis:
     image: redis:7.2-alpine
@@ -37,6 +35,47 @@ services:
           cpus: '1.0'
           memory: 1G
 
+  mongodb:
+    image: mongo:7.0
+    container_name: meeting-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - meeting-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: meeting-rabbitmq
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: meeting
+      RABBITMQ_DEFAULT_PASS: meeting123
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - meeting-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
   backend:
     build:
       context: .
@@ -49,15 +88,19 @@ services:
       REDIS_HOST: redis
       LIVEKIT_HOST: http://livekit:7880
       MINIO_ENDPOINT: http://minio:9000
+      MINIO_EGRESS_ENDPOINT: http://minio:9000
+      SPRING_DATA_MONGODB_URI: mongodb://mongodb:27017/meetingplatform
+      RABBITMQ_HOST: rabbitmq
     ports:
       - "8081:8081"
     depends_on:
       - postgres
       - redis
+      - mongodb
+      - rabbitmq
       - livekit
     networks:
       - meeting-network
-
 
   keycloak:
     image: quay.io/keycloak/keycloak:23.0
@@ -82,9 +125,13 @@ services:
       - meeting-network
 
   livekit:
-    image: livekit/livekit-server:latest
+    # v1.13.1+ supports rtc.advertise_internal_ip, required so both public
+    # browsers and the Egress worker on this Docker network can reach the SFU.
+    image: livekit/livekit-server:v1.13.6
     container_name: meeting-livekit
     restart: always
+    environment:
+      TZ: Asia/Bangkok
     ports:
       - "7880:7880"
       - "7881:7881"
@@ -94,6 +141,8 @@ services:
       - /etc/livekit.yaml
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
     networks:
@@ -105,12 +154,13 @@ services:
           memory: 1G
 
   livekit-egress:
-    image: livekit/egress:latest
+    image: livekit/egress:v1.12.0
     container_name: meeting-egress
     restart: always # Thêm để đảm bảo tính sẵn sàng cao
     privileged: true
     environment:
       EGRESS_CONFIG_FILE: /etc/egress.yaml
+      TZ: Asia/Bangkok
     command:
       - --config
       - /etc/egress.yaml
@@ -185,4 +235,8 @@ volumes:
   postgres_data:
     driver: local # Fix: Bổ sung driver bị thiếu
   minio_data:
+    driver: local
+  mongodb_data:
+    driver: local
+  rabbitmq_data:
     driver: local

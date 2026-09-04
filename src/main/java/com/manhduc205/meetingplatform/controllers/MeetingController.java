@@ -38,6 +38,11 @@ public class MeetingController {
         return ResponseEntity.ok(meetingService.getMyMeetings());
     }
 
+    @GetMapping("/{meetingCode}")
+    public ResponseEntity<MeetingResponse> getMeeting(@PathVariable String meetingCode) {
+        return ResponseEntity.ok(meetingService.getMeeting(meetingCode));
+    }
+
     @PutMapping("/{meetingCode}")
     public ResponseEntity<MeetingResponse> updateMeeting(
             @PathVariable String meetingCode,

@@ -10,6 +10,7 @@ import java.util.List;
 public interface MeetingService {
     MeetingResponse createMeeting(MeetingCreateRequest request);
     MeetingResponse createInstantMeeting(InstantMeetingCreateRequest request);
+    MeetingResponse getMeeting(String meetingCode);
     MeetingResponse updateMeeting(String meetingCode, MeetingUpdateRequest request);
     MeetingResponse startMeeting(String meetingCode);
     MeetingResponse endMeeting(String meetingCode);

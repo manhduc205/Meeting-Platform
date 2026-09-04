@@ -3,6 +3,7 @@ package com.manhduc205.meetingplatform.services.Impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.manhduc205.meetingplatform.enums.*;
+import com.manhduc205.meetingplatform.exceptions.ResourceNotFoundException;
 import com.manhduc205.meetingplatform.models.*;
 import com.manhduc205.meetingplatform.models.dtos.request.*;
 import com.manhduc205.meetingplatform.models.dtos.response.CalendarMeetingResponse;
@@ -82,6 +83,14 @@ public class MeetingServiceImpl implements MeetingService {
         meeting = meetingRepository.save(meeting);
         createInvitations(meeting, host, request.getInviteeEmails(), request.getMeetingPassword());
         publishMeetingEvent(meeting.getMeetingCode(), "MEETING_STARTED");
+        return toMeetingResponse(meeting);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MeetingResponse getMeeting(String meetingCode) {
+        MeetingEntity meeting = meetingRepository.findByMeetingCode(meetingCode)
+                .orElseThrow(() -> new ResourceNotFoundException("MEETING_NOT_FOUND", "Không tìm thấy cuộc họp"));
         return toMeetingResponse(meeting);
     }
 
@@ -281,7 +290,8 @@ public class MeetingServiceImpl implements MeetingService {
                 .description(meeting.getDescription()).hostId(meeting.getHostId()).status(meeting.getStatus().name())
                 .plannedStartTime(meeting.getPlannedStartTime()).plannedEndTime(meeting.getPlannedEndTime())
                 .startedAt(meeting.getStartedAt()).endedAt(meeting.getEndedAt())
-                .isWaitingRoomEnabled(Boolean.TRUE.equals(meeting.getIsWaitingRoomEnabled()))
+                .waitingRoomEnabled(Boolean.TRUE.equals(meeting.getIsWaitingRoomEnabled()))
+                .hasPassword(meeting.getMeetingPassword() != null && !meeting.getMeetingPassword().isBlank())
                 .createdAt(meeting.getCreatedAt()).googleEventId(meeting.getGoogleEventId()).build();
     }
 
