@@ -6,9 +6,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 public record RawTranscriptSegment(
         Double start,
         Double end,
-        String text,
-        String speakerId,
-        String speakerName,
-        Double confidence
+        String text
 ) {
 }

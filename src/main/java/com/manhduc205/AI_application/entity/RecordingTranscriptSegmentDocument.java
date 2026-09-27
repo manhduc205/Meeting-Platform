@@ -13,8 +13,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
 /** One document per spoken segment: efficient partial edits and cursor pagination. */
 @Document(collection = "recording_transcript_segments")
 @CompoundIndexes({
-        @CompoundIndex(name = "uk_recording_language_sequence", def = "{'recordingId': 1, 'language': 1, 'sequence': 1}", unique = true),
-        @CompoundIndex(name = "idx_recording_language_start", def = "{'recordingId': 1, 'language': 1, 'startMs': 1, 'sequence': 1}")
+        @CompoundIndex(name = "uk_recording_language_version_sequence", def = "{'recordingId': 1, 'language': 1, 'version': 1, 'sequence': 1}", unique = true),
+        @CompoundIndex(name = "idx_recording_language_version_start", def = "{'recordingId': 1, 'language': 1, 'version': 1, 'startMs': 1, 'sequence': 1}")
 })
 @Getter
 @Setter
@@ -30,10 +30,7 @@ public class RecordingTranscriptSegmentDocument {
     private Long sequence;
     private Long startMs;
     private Long endMs;
-    private String speakerId;
-    private String speakerName;
     private String originalText;
     private String translatedText;
-    private Double confidence;
     private Integer version;
 }

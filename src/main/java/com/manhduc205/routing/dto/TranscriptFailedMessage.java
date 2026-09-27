@@ -6,6 +6,7 @@ import java.time.Instant;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record TranscriptFailedMessage(
+        Integer schemaVersion,
         String messageId,
         String eventType,
         String jobId,

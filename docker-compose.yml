@@ -58,6 +58,7 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: meeting
       RABBITMQ_DEFAULT_PASS: meeting123
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: -rabbit consumer_timeout 43200000
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -88,9 +89,12 @@ services:
       REDIS_HOST: redis
       LIVEKIT_HOST: http://livekit:7880
       MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:9000}
       MINIO_EGRESS_ENDPOINT: http://minio:9000
       SPRING_DATA_MONGODB_URI: mongodb://mongodb:27017/meetingplatform
       RABBITMQ_HOST: rabbitmq
+      TASKFLOW_BASE_URL: http://taskflow-ai-api:8090
+      TASKFLOW_INTERNAL_TOKEN: ${TASKFLOW_INTERNAL_TOKEN:-change-me}
     ports:
       - "8081:8081"
     depends_on:
@@ -99,6 +103,57 @@ services:
       - mongodb
       - rabbitmq
       - livekit
+      - taskflow-ai-api
+    networks:
+      - meeting-network
+
+  taskflow-ai-api:
+    build:
+      context: ../TaskFlow-AI-Meeting
+    image: meeting-taskflow-ai:latest
+    container_name: meeting-ai-api
+    restart: always
+    env_file:
+      - ../TaskFlow-AI-Meeting/.env
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: meeting-recordings
+      MINIO_SECURE: "false"
+      TASKFLOW_INTERNAL_TOKEN: ${TASKFLOW_INTERNAL_TOKEN:-change-me}
+    command: ["uvicorn", "meeting_api:app", "--host", "0.0.0.0", "--port", "8090"]
+    ports:
+      - "8090:8090"
+    depends_on:
+      - minio
+    networks:
+      - meeting-network
+
+  taskflow-ai-worker:
+    build:
+      context: ../TaskFlow-AI-Meeting
+    image: meeting-taskflow-ai:latest
+    container_name: meeting-ai-worker
+    restart: always
+    env_file:
+      - ../TaskFlow-AI-Meeting/.env
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: meeting
+      RABBITMQ_PASSWORD: meeting123
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: meeting-recordings
+      MINIO_SECURE: "false"
+    command: ["python3", "worker.py"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_started
     networks:
       - meeting-network
 
@@ -184,6 +239,7 @@ services:
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin123
+      - MINIO_API_CORS_ALLOW_ORIGIN=${MINIO_CORS_ALLOWED_ORIGINS:-http://localhost:4200}
     ports:
       - "9000:9000"
       - "9001:9001"

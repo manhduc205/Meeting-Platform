@@ -2,9 +2,11 @@ package com.manhduc205.meetingplatform.exceptions;
 
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 
 import java.nio.file.AccessDeniedException;
 import java.util.Map;
@@ -74,15 +76,25 @@ public class GlobalExceptionHandler {
                                 Map.of(
                                                 "success", false,
                                                 "message", ex.getMessage(),
-                                                "errorCode", "FORBIDDEN"));
+                                "errorCode", "FORBIDDEN"));
+        }
+
+        @ExceptionHandler(AsyncRequestTimeoutException.class)
+        public ResponseEntity<?> handleAsyncRequestTimeout(AsyncRequestTimeoutException ex) {
+                return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(
+                                Map.of(
+                                                "success", false,
+                                                "message", "AI xử lý quá thời gian cho phép. Vui lòng thử lại.",
+                                                "errorCode", "AI_STREAM_TIMEOUT"));
         }
 
         // Lỗi chưa xác định
         @ExceptionHandler(Exception.class)
         public ResponseEntity<?> handleException(Exception ex) {
                 ex.printStackTrace();
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
-                                Map.of(
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .body(Map.of(
                                                 "success", false,
                                                 "message", "Lỗi hệ thống",
                                                 "errorCode", "SERVER_ERROR"));

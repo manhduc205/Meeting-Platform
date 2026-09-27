@@ -35,7 +35,7 @@ public final class RecordingStoragePaths {
     }
 
     public static String summary(String prefix, String language, int version) {
-        return prefix + "/ai/summary/" + language + "/v" + version + "/summary.json";
+        return prefix + "/ai/summary/" + language + "/v" + version + "/summary.md";
     }
 
     public static boolean isSafeRecordingPrefix(String prefix) {

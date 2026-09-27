@@ -3,6 +3,7 @@ package com.manhduc205.routing.dto;
 import java.time.Instant;
 
 public record TranscriptRequestedMessage(
+        Integer schemaVersion,
         String messageId,
         String eventType,
         String jobId,

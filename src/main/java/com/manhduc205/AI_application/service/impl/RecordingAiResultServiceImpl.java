@@ -1,7 +1,7 @@
 package com.manhduc205.AI_application.service.impl;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.manhduc205.AI_application.enums.AiContentStatus;
 import com.manhduc205.AI_application.enums.RecordingAiJobStatus;
@@ -15,31 +15,42 @@ import com.manhduc205.AI_application.entity.RecordingTranscriptSegmentDocument;
 import com.manhduc205.AI_application.repository.RecordingAiContentMongoRepository;
 import com.manhduc205.AI_application.repository.RecordingAiJobRepository;
 import com.manhduc205.meetingplatform.repositories.RecordingRepository;
-import com.manhduc205.AI_application.repository.RecordingTranscriptSegmentMongoRepository;
 import com.manhduc205.AI_application.service.RecordingAiResultService;
 import com.manhduc205.meetingplatform.utils.RecordingStoragePaths;
 import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.mongodb.core.BulkOperations;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.FilterInputStream;
 import java.io.InputStream;
+import java.io.IOException;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
 public class RecordingAiResultServiceImpl implements RecordingAiResultService {
+    private static final int TRANSCRIPT_BATCH_SIZE = 500;
+
     private final RecordingAiJobRepository jobRepository;
     private final RecordingRepository recordingRepository;
     private final RecordingAiContentMongoRepository aiContentRepository;
-    private final RecordingTranscriptSegmentMongoRepository transcriptRepository;
     private final MinioClient minioClient;
     private final ObjectMapper objectMapper;
+    private final MongoTemplate mongoTemplate;
 
     @Value("${app.minio.bucket}")
     private String minioBucket;
@@ -50,6 +61,9 @@ public class RecordingAiResultServiceImpl implements RecordingAiResultService {
     @Override
     @Transactional
     public void handleCompleted(TranscriptCompletedMessage message) throws Exception {
+        if (message.schemaVersion() != null && message.schemaVersion() != 1) {
+            throw new IllegalArgumentException("schemaVersion transcript không được hỗ trợ");
+        }
         RecordingAiJobEntity job = validateJob(message.jobId(), message.recordingId(), message.version());
         if (shouldIgnoreResult(job)) return;
         if (job.getStatus() == RecordingAiJobStatus.COMPLETED) return;
@@ -69,30 +83,27 @@ public class RecordingAiResultServiceImpl implements RecordingAiResultService {
             throw new IllegalArgumentException("summaryObjectKey không thuộc job hiện tại");
         }
 
-        List<RawTranscriptSegment> rawSegments = readTranscript(message.rawTranscriptObjectKey());
-        if (message.segmentCount() != null && message.segmentCount() != rawSegments.size()) {
+        TranscriptImport imported = importTranscript(message.rawTranscriptObjectKey(), job);
+        if (message.segmentCount() != null && message.segmentCount() != imported.segmentCount()) {
             throw new IllegalArgumentException("segmentCount không khớp file transcript trên MinIO");
         }
-        validateSegments(rawSegments);
-
-        List<RecordingTranscriptSegmentDocument> segments = IntStream.range(0, rawSegments.size())
-                .mapToObj(index -> toDocument(rawSegments.get(index), index, job))
-                .toList();
-        transcriptRepository.deleteByRecordingIdAndLanguage(job.getRecordingId(), job.getLanguage());
-        transcriptRepository.saveAll(segments);
+        if (message.transcriptSha256() != null && !message.transcriptSha256().isBlank()
+                && !message.transcriptSha256().equalsIgnoreCase(imported.sha256())) {
+            throw new IllegalArgumentException("SHA-256 của transcript không khớp event");
+        }
 
         RecordingAiContentDocument content = aiContentRepository.findByRecordingId(job.getRecordingId())
                 .orElseGet(() -> RecordingAiContentDocument.builder().recordingId(job.getRecordingId()).build());
         content.setTranscriptStatus(AiContentStatus.READY);
-        content.setSummaryStatus(message.summary() == null || message.summary().isBlank()
-                ? AiContentStatus.FAILED
-                : AiContentStatus.READY);
+        content.setSummaryStatus(AiContentStatus.NOT_REQUESTED);
         content.setSourceLanguage(job.getLanguage());
-        content.setSummary(message.summary());
-        content.setKeyMoments(toKeyMoments(message.keyMoments()));
+        content.setSummary(null);
+        content.setKeyMoments(List.of());
         content.setRawTranscriptObjectKey(message.rawTranscriptObjectKey());
         content.setCaptionObjectKey(message.captionObjectKey());
-        content.setSummaryObjectKey(message.summaryObjectKey());
+        content.setSummaryObjectKey(expectedSummaryKey);
+        content.setTranscriptSha256(imported.sha256());
+        content.setSummarySha256(null);
         content.setModel(message.model());
         content.setVersion(job.getVersion());
         content.setGeneratedAt(message.completedAt() == null ? Instant.now() : message.completedAt());
@@ -106,6 +117,9 @@ public class RecordingAiResultServiceImpl implements RecordingAiResultService {
     @Override
     @Transactional
     public void handleFailed(TranscriptFailedMessage message) {
+        if (message.schemaVersion() != null && message.schemaVersion() != 1) {
+            throw new IllegalArgumentException("schemaVersion transcript không được hỗ trợ");
+        }
         RecordingAiJobEntity job = validateJob(message.jobId(), message.recordingId(), message.version());
         if (shouldIgnoreResult(job)) return;
         if (job.getStatus() == RecordingAiJobStatus.COMPLETED) return;
@@ -118,7 +132,7 @@ public class RecordingAiResultServiceImpl implements RecordingAiResultService {
         RecordingAiContentDocument content = aiContentRepository.findByRecordingId(job.getRecordingId())
                 .orElseGet(() -> RecordingAiContentDocument.builder().recordingId(job.getRecordingId()).build());
         content.setTranscriptStatus(AiContentStatus.FAILED);
-        content.setSummaryStatus(AiContentStatus.FAILED);
+        content.setSummaryStatus(AiContentStatus.NOT_REQUESTED);
         content.setSourceLanguage(job.getLanguage());
         content.setVersion(job.getVersion());
         aiContentRepository.save(content);
@@ -142,35 +156,77 @@ public class RecordingAiResultServiceImpl implements RecordingAiResultService {
                 .orElse(true);
     }
 
-    private List<RawTranscriptSegment> readTranscript(String objectKey) throws Exception {
-        try (InputStream input = minioClient.getObject(GetObjectArgs.builder()
+    private TranscriptImport importTranscript(String objectKey, RecordingAiJobEntity job) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (InputStream source = minioClient.getObject(GetObjectArgs.builder()
                 .bucket(minioBucket)
                 .object(objectKey)
-                .build())) {
-            byte[] bytes = input.readNBytes(maxTranscriptBytes + 1);
-            if (bytes.length > maxTranscriptBytes) {
-                throw new IllegalArgumentException("File transcript vượt quá giới hạn cho phép");
-            }
-            return parseTranscript(bytes);
+                .build());
+             DigestInputStream digested = new DigestInputStream(source, digest);
+             InputStream input = new LimitedInputStream(digested, maxTranscriptBytes);
+             JsonParser parser = objectMapper.getFactory().createParser(input)) {
+            int count = streamSegments(parser, job);
+            while (parser.nextToken() != null) parser.skipChildren();
+            return new TranscriptImport(count, HexFormat.of().formatHex(digest.digest()));
         }
     }
 
-    List<RawTranscriptSegment> parseTranscript(byte[] bytes) throws Exception {
-        JsonNode root = objectMapper.readTree(bytes);
-        JsonNode segments = root.isArray() ? root : root.path("segments");
-        if (!segments.isArray()) {
+    int streamSegments(JsonParser parser, RecordingAiJobEntity job) throws Exception {
+        JsonToken token = parser.nextToken();
+        if (token == JsonToken.START_OBJECT) {
+            while (parser.nextToken() != JsonToken.END_OBJECT) {
+                String fieldName = parser.currentName();
+                token = parser.nextToken();
+                if ("segments".equals(fieldName)) break;
+                parser.skipChildren();
+            }
+        }
+        if (token != JsonToken.START_ARRAY) {
             throw new IllegalArgumentException("Artifact transcript thiếu mảng segments");
         }
-        return objectMapper.convertValue(segments, new TypeReference<>() {});
-    }
 
-    private void validateSegments(List<RawTranscriptSegment> segments) {
-        for (RawTranscriptSegment segment : segments) {
-            if (segment.start() == null || segment.end() == null || segment.start() < 0
-                    || segment.end() < segment.start() || segment.text() == null || segment.text().isBlank()) {
-                throw new IllegalArgumentException("File transcript chứa segment không hợp lệ");
+        List<RecordingTranscriptSegmentDocument> batch = new ArrayList<>(TRANSCRIPT_BATCH_SIZE);
+        int sequence = 0;
+        while (parser.nextToken() != JsonToken.END_ARRAY) {
+            RawTranscriptSegment segment = objectMapper.readValue(parser, RawTranscriptSegment.class);
+            validateSegment(segment);
+            batch.add(toDocument(segment, sequence++, job));
+            if (batch.size() == TRANSCRIPT_BATCH_SIZE) {
+                upsertBatch(batch);
+                batch.clear();
             }
         }
+        if (!batch.isEmpty()) upsertBatch(batch);
+        if (sequence == 0) throw new IllegalArgumentException("Transcript không có segment");
+        return sequence;
+    }
+
+    private void validateSegment(RawTranscriptSegment segment) {
+        if (segment.start() == null || segment.end() == null || segment.start() < 0
+                || segment.end() < segment.start() || segment.text() == null || segment.text().isBlank()) {
+            throw new IllegalArgumentException("File transcript chứa segment không hợp lệ");
+        }
+    }
+
+    private void upsertBatch(List<RecordingTranscriptSegmentDocument> batch) {
+        BulkOperations operations = mongoTemplate.bulkOps(
+                BulkOperations.BulkMode.UNORDERED, RecordingTranscriptSegmentDocument.class);
+        for (RecordingTranscriptSegmentDocument segment : batch) {
+            Query key = Query.query(Criteria.where("recordingId").is(segment.getRecordingId())
+                    .and("language").is(segment.getLanguage())
+                    .and("version").is(segment.getVersion())
+                    .and("sequence").is(segment.getSequence()));
+            Update value = new Update()
+                    .set("startMs", segment.getStartMs())
+                    .set("endMs", segment.getEndMs())
+                    .set("originalText", segment.getOriginalText())
+                    .set("translatedText", segment.getTranslatedText())
+                    .unset("speakerId")
+                    .unset("speakerName")
+                    .unset("confidence");
+            operations.upsert(key, value);
+        }
+        operations.execute();
     }
 
     private RecordingTranscriptSegmentDocument toDocument(
@@ -181,28 +237,45 @@ public class RecordingAiResultServiceImpl implements RecordingAiResultService {
                 .sequence((long) sequence)
                 .startMs(Math.round(segment.start() * 1000))
                 .endMs(Math.round(segment.end() * 1000))
-                .speakerId(segment.speakerId())
-                .speakerName(segment.speakerName())
                 .originalText(segment.text())
-                .confidence(segment.confidence())
                 .version(job.getVersion())
                 .build();
-    }
-
-    private List<RecordingAiContentDocument.KeyMoment> toKeyMoments(List<TranscriptCompletedMessage.KeyMoment> moments) {
-        if (moments == null) return List.of();
-        return moments.stream()
-                .filter(moment -> moment.startMs() != null && moment.topic() != null && !moment.topic().isBlank())
-                .map(moment -> RecordingAiContentDocument.KeyMoment.builder()
-                        .startMs(moment.startMs())
-                        .endMs(moment.endMs())
-                        .topic(moment.topic())
-                        .build())
-                .toList();
     }
 
     private String truncate(String value) {
         if (value == null || value.isBlank()) return "AI worker báo xử lý thất bại";
         return value.substring(0, Math.min(value.length(), 2000));
+    }
+
+    private record TranscriptImport(int segmentCount, String sha256) {
+    }
+
+    private static final class LimitedInputStream extends FilterInputStream {
+        private final long limit;
+        private long count;
+
+        private LimitedInputStream(InputStream input, long limit) {
+            super(input);
+            this.limit = limit;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int value = super.read();
+            if (value >= 0) checkLimit(1);
+            return value;
+        }
+
+        @Override
+        public int read(byte[] bytes, int offset, int length) throws IOException {
+            int read = super.read(bytes, offset, length);
+            if (read > 0) checkLimit(read);
+            return read;
+        }
+
+        private void checkLimit(int read) throws IOException {
+            count += read;
+            if (count > limit) throw new IOException("File transcript vượt quá giới hạn cho phép");
+        }
     }
 }

@@ -25,9 +25,6 @@ public class TranscriptSegmentPageResponse {
         private Long sequence;
         private Long startMs;
         private Long endMs;
-        private String speakerId;
-        private String speakerName;
         private String text;
-        private Double confidence;
     }
 }

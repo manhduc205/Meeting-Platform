@@ -51,7 +51,8 @@ public class RecordingContentServiceImpl implements RecordingContentService {
         AiContentStatus effectiveStatus = effectiveStatus(aiContent, latestJob);
         long segmentCount = language == null || effectiveStatus != AiContentStatus.READY
                 ? 0
-                : transcriptSegmentRepository.countByRecordingIdAndLanguage(recordingId, language);
+                : transcriptSegmentRepository.countByRecordingIdAndLanguageAndVersion(
+                        recordingId, language, latestJob != null ? latestJob.getVersion() : aiContent.getVersion());
 
         return RecordingDetailResponse.builder()
                 .id(recording.getId())
@@ -89,9 +90,12 @@ public class RecordingContentServiceImpl implements RecordingContentService {
         int pageSize = Math.min(Math.max(limit, 1), MAX_TRANSCRIPT_PAGE_SIZE);
         long sequence = parseCursor(cursor);
 
+        RecordingAiContentDocument content = aiContentRepository.findByRecordingId(recordingId)
+                .filter(item -> item.getVersion() != null)
+                .orElseThrow(() -> new IllegalStateException("Transcript chưa sẵn sàng"));
         Slice<RecordingTranscriptSegmentDocument> page = transcriptSegmentRepository
-                .findByRecordingIdAndLanguageAndSequenceGreaterThanOrderBySequenceAsc(
-                        recordingId, language, sequence, PageRequest.of(0, pageSize));
+                .findByRecordingIdAndLanguageAndVersionAndSequenceGreaterThanOrderBySequenceAsc(
+                        recordingId, language, content.getVersion(), sequence, PageRequest.of(0, pageSize));
 
         List<TranscriptSegmentPageResponse.Segment> segments = page.getContent().stream()
                 .map(this::toSegmentResponse)
@@ -133,7 +137,7 @@ public class RecordingContentServiceImpl implements RecordingContentService {
         if (!currentContent) {
             return RecordingDetailResponse.AiContent.builder()
                     .transcriptStatus(effectiveStatus.name())
-                    .summaryStatus(effectiveStatus.name())
+                    .summaryStatus(AiContentStatus.NOT_REQUESTED.name())
                     .sourceLanguage(latestJob == null ? null : latestJob.getLanguage())
                     .keyMoments(List.of())
                     .build();
@@ -179,10 +183,7 @@ public class RecordingContentServiceImpl implements RecordingContentService {
                 .sequence(segment.getSequence())
                 .startMs(segment.getStartMs())
                 .endMs(segment.getEndMs())
-                .speakerId(segment.getSpeakerId())
-                .speakerName(segment.getSpeakerName())
                 .text(text)
-                .confidence(segment.getConfidence())
                 .build();
     }
 }

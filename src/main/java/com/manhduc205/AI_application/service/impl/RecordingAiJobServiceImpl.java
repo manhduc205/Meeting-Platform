@@ -13,6 +13,7 @@ import com.manhduc205.AI_application.dto.request.TranscriptRequestRequest;
 import com.manhduc205.AI_application.dto.response.TranscriptRequestResponse;
 import com.manhduc205.meetingplatform.repositories.OutboxEventRepository;
 import com.manhduc205.AI_application.repository.RecordingAiJobRepository;
+import com.manhduc205.AI_application.repository.RecordingAiContentMongoRepository;
 import com.manhduc205.meetingplatform.repositories.RecordingRepository;
 import com.manhduc205.AI_application.service.RecordingAiJobService;
 import com.manhduc205.meetingplatform.utils.RecordingStoragePaths;
@@ -28,7 +29,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class RecordingAiJobServiceImpl implements RecordingAiJobService {
-    static final String OPERATION = "TRANSCRIPT_SUMMARY";
+    static final String OPERATION = "TRANSCRIPT";
     private static final List<RecordingAiJobStatus> ACTIVE_STATUSES = List.of(
             RecordingAiJobStatus.REQUESTED,
             RecordingAiJobStatus.PUBLISHED
@@ -36,6 +37,7 @@ public class RecordingAiJobServiceImpl implements RecordingAiJobService {
 
     private final RecordingRepository recordingRepository;
     private final RecordingAiJobRepository jobRepository;
+    private final RecordingAiContentMongoRepository aiContentRepository;
     private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper;
 
@@ -59,7 +61,16 @@ public class RecordingAiJobServiceImpl implements RecordingAiJobService {
                 recordingId, OPERATION, ACTIVE_STATUSES);
         if (activeJob.isPresent()) return toResponse(activeJob.get());
 
-        int version = jobRepository.findFirstByRecordingIdAndOperationOrderByVersionDesc(recordingId, OPERATION)
+        var latestJob = jobRepository.findFirstByRecordingIdAndOperationOrderByVersionDesc(recordingId, OPERATION);
+        boolean reusable = (request == null || !request.shouldForceRegenerate())
+                && latestJob.filter(job -> job.getStatus() == RecordingAiJobStatus.COMPLETED).isPresent()
+                && aiContentRepository.findByRecordingId(recordingId)
+                .filter(content -> content.getTranscriptStatus() == com.manhduc205.AI_application.enums.AiContentStatus.READY)
+                .filter(content -> latestJob.map(job -> job.getVersion().equals(content.getVersion())).orElse(false))
+                .isPresent();
+        if (reusable) return toResponse(latestJob.orElseThrow());
+
+        int version = latestJob
                 .map(previous -> previous.getVersion() + 1)
                 .orElse(1);
         String language = request == null || request.language() == null || request.language().isBlank()
@@ -79,6 +90,7 @@ public class RecordingAiJobServiceImpl implements RecordingAiJobService {
 
         String messageId = UUID.randomUUID().toString();
         TranscriptRequestedMessage command = new TranscriptRequestedMessage(
+                1,
                 messageId,
                 "transcript.requested",
                 job.getId(),
